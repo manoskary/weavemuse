@@ -1,0 +1,53 @@
+# Music Agent Dependencies
+# Core framework and agents
+smolagents[tools]>=1.20.0
+
+# Web interface
+gradio>=4.0.0
+gradio_pdf>=0.0.22
+
+# Deep learning frameworks
+torch>=2.0.0
+torchaudio>=2.0.0
+transformers>=4.35.0
+diffusers>=0.25.0
+accelerate>=0.21.0
+bitsandbytes>=0.46.1
+
+# Audio processing and generation
+stable-audio-tools>=0.0.19
+librosa>=0.10.0
+soundfile>=0.12.0
+
+# Music notation and symbolic music
+symusic>=0.4.0
+music21>=9.1.0
+abctoolkit==0.0.6
+
+# Scientific computing
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.11.0
+matplotlib>=3.7.0
+einops>=0.6.0
+
+# Utilities and parsing
+requests>=2.31.0
+pyparsing==3.2.1
+samplings==0.1.7
+
+# Image and PDF processing
+pillow>=10.0.0
+PyMuPDF
+
+# Web framework
+fastapi>=0.100.0
+uvicorn>=0.23.0
+pydantic>=2.0.0
+aiofiles>=23.0.0
+
+# Hugging Face integration
+huggingface-hub>=0.17.0
+
+# Additional utilities
+zero
