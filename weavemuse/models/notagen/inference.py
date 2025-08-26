@@ -104,7 +104,23 @@ print("Parameter Number: " + str(sum(p.numel() for p in model.parameters() if p.
 
 # Download weights at startup
 model_weights_path = download_model_weights()
-checkpoint = torch.load(model_weights_path, weights_only=True, map_location=torch.device(device))
+
+# Handle CUDA availability for loading
+try:
+    if torch.cuda.is_available() and torch.cuda.device_count() > 0:
+        # Try loading with CUDA
+        checkpoint = torch.load(model_weights_path, weights_only=True, map_location=torch.device(device))
+    else:
+        # Force CPU loading if CUDA not available
+        checkpoint = torch.load(model_weights_path, weights_only=True, map_location=torch.device('cpu'))
+        device = 'cpu'
+        print("⚠️  NotaGen: CUDA not available, loading on CPU")
+except (RuntimeError, torch.OutOfMemoryError) as e:
+    # Fallback to CPU if CUDA loading fails
+    print(f"⚠️  NotaGen: CUDA loading failed ({e}), falling back to CPU")
+    checkpoint = torch.load(model_weights_path, weights_only=True, map_location=torch.device('cpu'))
+    device = 'cpu'
+
 model.load_state_dict(checkpoint['model'], strict=False)
 
 model = model.to(device)

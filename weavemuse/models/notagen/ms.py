@@ -40,7 +40,9 @@ if not os.path.exists(extra_dir):
     subprocess.run([f"./{apkname}", "--appimage-extract"])
 
 file_dir = os.path.dirname(os.path.abspath(__file__))
-# only keep the part of the file_dir that is before the "../src/music_agent/..."
-file_dir = file_dir[:file_dir.find("/src/")]
+# only keep the part of the file_dir that is before the "/weavemuse/models/notagen/..."
+file_dir = file_dir[:file_dir.find("/weavemuse/models/")]
 MSCORE = os.path.join(file_dir, extra_dir, "AppRun")
+
+print("Running MuseScore from: ", MSCORE)
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
