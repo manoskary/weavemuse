@@ -237,9 +237,28 @@ class PatchLevelDecoder(PreTrainedModel):
         :param masks: the masks for the patches
         :return: the encoded patches
         """
-        patches = torch.nn.functional.one_hot(patches, num_classes=128).to(self.dtype)
-        patches = patches.reshape(len(patches), -1, PATCH_SIZE * (128))
-        patches = self.patch_embedding(patches.to(self.device))
+        # Get the device of the model's parameters
+        device = next(self.parameters()).device
+        dtype = next(self.parameters()).dtype
+        
+        # Ensure patches are on the correct device first
+        patches = patches.to(device)
+        
+        # Ensure patches tensor is LongTensor for one_hot compatibility
+        # This is crucial for quantized models where tensor types can change
+        if patches.dtype not in [torch.long, torch.int64]:
+            patches = patches.long()
+        
+        # Ensure patches are in valid range for one_hot encoding
+        patches = torch.clamp(patches, 0, 127)
+        
+        # Perform one_hot encoding and ensure result is on correct device
+        patches_one_hot = torch.nn.functional.one_hot(patches, num_classes=128)
+        patches_one_hot = patches_one_hot.to(device=device, dtype=dtype)
+        
+        # Reshape and pass through embedding layer
+        patches = patches_one_hot.reshape(len(patches), -1, PATCH_SIZE * (128))
+        patches = self.patch_embedding(patches)
 
         if masks==None:
             return self.base(inputs_embeds=patches)
@@ -269,6 +288,9 @@ class CharLevelDecoder(PreTrainedModel):
         :param target_patches: the target patches
         :return: the output of the model
         """
+        # Ensure target_patches is LongTensor for embedding layers
+        target_patches = target_patches.long()
+        
         target_patches = torch.cat((torch.ones_like(target_patches[:, 0:1]) * self.bos_token_id,
                                         target_patches), dim=1)  # [patch_len, patch_size + 1]
 
@@ -300,6 +322,9 @@ class CharLevelDecoder(PreTrainedModel):
         """
         encoded_patch = encoded_patch.reshape(1, 1, -1) # [1, 1, hidden_size]
         tokens = tokens.reshape(1, -1)
+        
+        # Ensure tokens is LongTensor for embedding layer
+        tokens = tokens.long()
 
         # Get input embeddings
         tokens = torch.nn.functional.embedding(tokens, self.base.transformer.wte.weight)

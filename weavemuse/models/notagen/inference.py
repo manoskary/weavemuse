@@ -4,10 +4,14 @@ import torch
 import re
 import difflib
 from .utils import *
+from .model_manager import get_optimal_notagen_model, model_manager
 from .config import (
     TEMPERATURE,
     TOP_P,
-    TOP_K
+    TOP_K,
+    USE_QUANTIZATION,
+    QUANTIZED_WEIGHTS_PATH,
+    INFERENCE_WEIGHTS_PATH
 )
 from transformers import GPT2Config
 from abctoolkit.utils import Exclaim_re, Quote_re, SquareBracket_re, Barline_regexPattern
@@ -45,6 +49,135 @@ byte_config = GPT2Config(num_hidden_layers=CHAR_NUM_LAYERS,
                          vocab_size=128)
 
 model = NotaGenLMHeadModel(encoder_config=patch_config, decoder_config=byte_config).to(device)
+
+
+def get_system_memory_gb():
+    """Get system RAM in GB"""
+    try:
+        import psutil
+        return psutil.virtual_memory().total / (1024**3)
+    except ImportError:
+        return 8.0  # Default assumption
+
+def get_gpu_memory_gb():
+    """Get GPU memory in GB"""
+    if torch.cuda.is_available():
+        try:
+            return torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        except:
+            return 0.0
+    return 0.0
+
+def should_use_quantization():
+    """
+    Automatically determine if quantization should be used based on system resources.
+    
+    Returns:
+        bool: True if quantization should be used
+    """
+    # Check if user explicitly set quantization
+    if 'NOTAGEN_USE_QUANTIZATION' in os.environ:
+        return os.environ['NOTAGEN_USE_QUANTIZATION'].lower() in ['true', '1', 'yes']
+    
+    # Auto-detect based on system resources
+    system_ram = get_system_memory_gb()
+    gpu_ram = get_gpu_memory_gb()
+    
+    logger.info(f"System RAM: {system_ram:.1f}GB, GPU RAM: {gpu_ram:.1f}GB")
+    
+    # Use quantization if:
+    # 1. System has less than 16GB RAM, OR
+    # 2. GPU has less than 8GB VRAM, OR
+    # 3. No GPU available
+    if system_ram < 16.0 or gpu_ram < 8.0 or not torch.cuda.is_available():
+        logger.info("Using quantized model due to limited resources")
+        return True
+    else:
+        logger.info("Using full precision model")
+        return False
+
+def load_model_weights():
+    """Load model weights with intelligent quantization support."""
+    global model
+    
+    # Determine quantization strategy
+    use_quantization = should_use_quantization()
+    
+    # Check if quantized model should be used
+    if use_quantization:
+        quantized_path = os.path.join(os.getcwd(), QUANTIZED_WEIGHTS_PATH)
+        
+        if os.path.exists(quantized_path):
+            logger.info(f"Loading quantized model from: {quantized_path}")
+            
+            try:
+                # Load quantized weights directly (they're already quantized)
+                state_dict = torch.load(quantized_path, map_location='cpu', weights_only=False)
+                model.load_state_dict(state_dict)
+                
+                # Apply additional quantization if needed
+                model = torch.quantization.quantize_dynamic(
+                    model.cpu(), 
+                    {torch.nn.Linear}, 
+                    dtype=torch.qint8
+                )
+                
+                # Ensure model is in eval mode and proper data type
+                model.eval()
+                model.float()  # Ensure Float32 for compatibility
+                
+                # Keep on CPU for quantized model compatibility
+                logger.info("✅ Quantized model loaded successfully! (Running on CPU)")
+                return True
+                
+            except Exception as e:
+                logger.warning(f"Failed to load quantized model: {e}")
+                logger.info("Falling back to original model...")
+        else:
+            logger.warning(f"Quantized weights not found at: {quantized_path}")
+            logger.info("Falling back to original model...")
+    
+    # Fall back to original weights
+    logger.info(f"Loading original model from: {INFERENCE_WEIGHTS_PATH}")
+    download_model_weights()
+    
+    checkpoint = torch.load(INFERENCE_WEIGHTS_PATH, map_location=device, weights_only=False)
+    if 'model' in checkpoint:
+        state_dict = checkpoint['model']
+    else:
+        state_dict = checkpoint
+        
+    model.load_state_dict(state_dict)
+    model = model.to(device)
+    model.eval()
+    logger.info("✅ Original model loaded successfully!")
+    return True
+
+
+def get_model_device_and_dtype():
+    """Get the appropriate device and dtype for the current model."""
+    global model, device
+    if model is not None:
+        # Get device from the model's parameters
+        try:
+            model_device = next(model.parameters()).device
+            model_dtype = next(model.parameters()).dtype
+            return model_device, model_dtype
+        except (StopIteration, AttributeError):
+            # Fallback if model has no parameters
+            pass
+    
+    # Fallback based on quantization settings and global device
+    if USE_QUANTIZATION:
+        return device, torch.float32  # Use the global device variable
+    else:
+        return device, torch.float32
+
+
+def create_tensor_for_model(data, **kwargs):
+    """Create a tensor with appropriate device and dtype for the current model."""
+    model_device, model_dtype = get_model_device_and_dtype()
+    return torch.tensor(data, device=model_device, dtype=model_dtype, **kwargs)
 
 
 def download_model_weights():
@@ -101,30 +234,6 @@ model = prepare_model_for_kbit_training(
 )
 
 print("Parameter Number: " + str(sum(p.numel() for p in model.parameters() if p.requires_grad)))
-
-# Download weights at startup
-model_weights_path = download_model_weights()
-
-# Handle CUDA availability for loading
-try:
-    if torch.cuda.is_available() and torch.cuda.device_count() > 0:
-        # Try loading with CUDA
-        checkpoint = torch.load(model_weights_path, weights_only=True, map_location=torch.device(device))
-    else:
-        # Force CPU loading if CUDA not available
-        checkpoint = torch.load(model_weights_path, weights_only=True, map_location=torch.device('cpu'))
-        device = 'cpu'
-        print("⚠️  NotaGen: CUDA not available, loading on CPU")
-except (RuntimeError, torch.OutOfMemoryError) as e:
-    # Fallback to CPU if CUDA loading fails
-    print(f"⚠️  NotaGen: CUDA loading failed ({e}), falling back to CPU")
-    checkpoint = torch.load(model_weights_path, weights_only=True, map_location=torch.device('cpu'))
-    device = 'cpu'
-
-model.load_state_dict(checkpoint['model'], strict=False)
-
-model = model.to(device)
-model.eval()
 
 
 def postprocess_inst_names(abc_text):
@@ -302,30 +411,49 @@ def inference_patch(period, composer, instrumentation):
                           in prompt_patches]
         prompt_patches.insert(0, bos_patch)
 
-        input_patches = torch.tensor(prompt_patches, device=device).reshape(1, -1)
+        input_patches = create_tensor_for_model(prompt_patches).reshape(1, -1)
 
         end_flag = False
         cut_index = None
 
         tunebody_flag = False
+        
+        # Get device and dtype for current model
+        model_device, model_dtype = get_model_device_and_dtype()
 
         with torch.inference_mode():
 
             while True:
-                with torch.autocast(device_type='cuda', dtype=torch.float16):
+                # Only use autocast for CUDA, not for CPU quantized model
+                if model_device == 'cuda':
+                    with torch.autocast(device_type='cuda', dtype=torch.float16):
+                        predicted_patch = model.generate(input_patches.unsqueeze(0),
+                                                         top_k=TOP_K,
+                                                         top_p=TOP_P,
+                                                         temperature=TEMPERATURE)
+                else:
                     predicted_patch = model.generate(input_patches.unsqueeze(0),
                                                      top_k=TOP_K,
                                                      top_p=TOP_P,
                                                      temperature=TEMPERATURE)
+                    
                 if not tunebody_flag and patchilizer.decode([predicted_patch]).startswith(
                         '[r:'):  # 初次进入tunebody，必须以[r:0/开头
                     tunebody_flag = True
-                    r0_patch = torch.tensor([ord(c) for c in '[r:0/']).unsqueeze(0).to(device)
+                    r0_patch = create_tensor_for_model([ord(c) for c in '[r:0/']).unsqueeze(0)
                     temp_input_patches = torch.concat([input_patches, r0_patch], axis=-1)
-                    predicted_patch = model.generate(temp_input_patches.unsqueeze(0),
-                                                     top_k=TOP_K,
-                                                     top_p=TOP_P,
-                                                     temperature=TEMPERATURE)
+                    
+                    if model_device == 'cuda':
+                        with torch.autocast(device_type='cuda', dtype=torch.float16):
+                            predicted_patch = model.generate(temp_input_patches.unsqueeze(0),
+                                                             top_k=TOP_K,
+                                                             top_p=TOP_P,
+                                                             temperature=TEMPERATURE)
+                    else:
+                        predicted_patch = model.generate(temp_input_patches.unsqueeze(0),
+                                                         top_k=TOP_K,
+                                                         top_p=TOP_P,
+                                                         temperature=TEMPERATURE)
                     predicted_patch = [ord(c) for c in '[r:0/'] + predicted_patch
                 if predicted_patch[0] == patchilizer.bos_token_id and predicted_patch[1] == patchilizer.eos_token_id:
                     end_flag = True
@@ -347,7 +475,7 @@ def inference_patch(period, composer, instrumentation):
                     if predicted_patch[j] == patchilizer.eos_token_id:
                         patch_end_flag = True
 
-                predicted_patch = torch.tensor([predicted_patch], device=device)  # (1, 16)
+                predicted_patch = create_tensor_for_model([predicted_patch])  # (1, 16)
                 input_patches = torch.cat([input_patches, predicted_patch], dim=1)  # (1, 16 * patch_len)
 
                 if len(byte_list) > 102400:
@@ -381,7 +509,7 @@ def inference_patch(period, composer, instrumentation):
                     input_patches = patchilizer.encode_generate(abc_code_slice)
 
                     input_patches = [item for sublist in input_patches for item in sublist]
-                    input_patches = torch.tensor([input_patches], device=device)
+                    input_patches = create_tensor_for_model([input_patches])
                     input_patches = input_patches.reshape(1, -1)
 
                     context_tunebody_byte_list = list(''.join(context_tunebody_lines[-cut_index:]))
@@ -408,3 +536,10 @@ def inference_patch(period, composer, instrumentation):
 
 if __name__ == '__main__':
     inference_patch('Classical', 'Beethoven, Ludwig van', 'Orchestral')
+else:
+    # Load the model weights when imported (but not when run as main)
+    try:
+        load_model_weights()
+    except Exception as e:
+        logger.warning(f"Failed to load model weights on import: {e}")
+        logger.info("Model will be loaded on first use.")

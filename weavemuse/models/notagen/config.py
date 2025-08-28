@@ -13,3 +13,6 @@ PATCH_LENGTH = 1024                                             # Patch Length
 CHAR_NUM_LAYERS = 6                                             # Number of layers in the decoder
 PATCH_NUM_LAYERS = 20                                           # Number of layers in the encoder
 HIDDEN_SIZE = 1280                                               # Hidden Size
+# Quantization settings
+USE_QUANTIZATION = True
+QUANTIZED_WEIGHTS_PATH = '.cache/weights_notagenx_quantized_int8.pth'
