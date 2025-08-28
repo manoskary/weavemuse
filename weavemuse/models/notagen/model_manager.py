@@ -18,28 +18,28 @@ class NotaGenModelManager:
     # Model configurations
     MODELS = {
         "original": {
-            "hf_repo": "emmanouil-karystinaios/NotaGenX",
+            "hf_repo": "manoskary/NotaGenX",
             "filename": "weights_notagenx_p_size_16_p_length_1024_p_layers_20_h_size_1280.pth",
-            "device": "auto",  # Will use GPU if available
+            "device": "auto",
             "quantized": False,
             "memory_req_gb": 4.0,
             "description": "Original full-precision NotaGen model"
         },
-        "quantized_int8": {
-            "hf_repo": "emmanouil-karystinaios/NotaGenX",
-            "filename": "weights_notagenx_quantized_int8.pth",
-            "device": "cpu",  # Quantized models typically run on CPU
+        "quantized": {
+            "hf_repo": "manoskary/NotaGenX-Quantized",
+            "filename": "pytorch_model.bin",
+            "device": "auto",
             "quantized": True,
             "memory_req_gb": 1.5,
-            "description": "INT8 quantized NotaGen model for resource-constrained systems"
+            "description": "INT8 quantized NotaGen model (75% smaller, faster inference)"
         },
         "quantized_fp16": {
-            "hf_repo": "emmanouil-karystinaios/NotaGenX", 
+            "hf_repo": "manoskary/NotaGenX", 
             "filename": "weights_notagenx_quantized_fp16.pth",
             "device": "auto",
             "quantized": True,
-            "memory_req_gb": 2.0,
-            "description": "FP16 quantized NotaGen model - good balance of speed and quality"
+            "memory_req_gb": 2.5,
+            "description": "FP16 quantized NotaGen model (50% smaller)"
         }
     }
     
@@ -102,19 +102,21 @@ class NotaGenModelManager:
         logger.info(f"System info: {system_info}")
         
         # Decision logic:
-        # 1. If no CUDA or low GPU memory, use INT8 quantized
-        # 2. If medium memory, use FP16 quantized  
-        # 3. If high memory, use original
+        # 1. Default to quantized model for better performance
+        # 2. Use original only if explicitly needed or if quantized fails
+        # 3. Quantized model is faster and uses less memory
         
-        if not system_info["cuda_available"] or system_info["gpu_ram_gb"] < 4.0:
-            model_choice = "quantized_int8"
-            reason = "Limited GPU resources"
-        elif system_info["system_ram_gb"] < 8.0 or system_info["gpu_ram_gb"] < 8.0:
-            model_choice = "quantized_fp16"
-            reason = "Medium system resources"
+        # Always prefer quantized model unless specifically overridden
+        if not system_info["cuda_available"]:
+            model_choice = "quantized"
+            reason = "No CUDA available, using CPU-optimized quantized model"
+        elif system_info["gpu_ram_gb"] < 2.0:
+            model_choice = "quantized"
+            reason = "Low GPU memory, using quantized model"
         else:
-            model_choice = "original"
-            reason = "Sufficient resources for full model"
+            # Default to quantized for better performance
+            model_choice = "quantized"
+            reason = "Using quantized model for optimal performance"
             
         logger.info(f"Selected model '{model_choice}' - {reason}")
         return model_choice

@@ -93,7 +93,7 @@ class NotaGenTool(ManagedTransformersTool):
     def __init__(
         self, 
         device: str = "auto", 
-        model_id: str = "sander-wood/notagen", 
+        model_id: str = "manoskary/NotaGenX-Quantized", 
         output_dir: Optional[str] = None,
         **kwargs
     ):

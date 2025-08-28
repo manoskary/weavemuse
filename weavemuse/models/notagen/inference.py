@@ -193,7 +193,7 @@ def download_model_weights():
     try:
         # Download from HuggingFace
         downloaded_path = hf_hub_download(
-            repo_id="ElectricAlexis/NotaGen",
+            repo_id="manoskary/NotaGenX",
             filename=weights_path,
             local_dir=os.getcwd(),
             local_dir_use_symlinks=False
