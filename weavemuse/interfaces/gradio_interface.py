@@ -5,6 +5,8 @@ Gradio Interface - Web interface for the WeaveMuse Framework.
 import logging
 import os, re, shutil
 import tempfile
+import threading
+import glob
 from typing import Optional, Tuple, Dict, Any, List
 from pathlib import Path
 import gradio as gr
@@ -49,7 +51,7 @@ from smolagents.gradio_ui import stream_to_gradio
 logger = logging.getLogger(__name__)
 
 
-class WeaveMuseInterface:
+class WeaveMuseInterface(gr.Blocks):
     """
     Gradio interface for interacting with a [`MultiStepAgent`], i.e. MusicAgent.
 
@@ -81,23 +83,54 @@ class WeaveMuseInterface:
         ```
     """
     
-    def __init__(self, agent: MultiStepAgent, file_upload_folder: str | None = None, reset_agent_memory: bool = False):
-        if not _is_package_available("gradio"):
-            raise ModuleNotFoundError(
-                "Please install 'gradio' extra to use the GradioUI: `pip install 'smolagents[gradio]'`"
-            )
+    def __init__(self, agent: MultiStepAgent, file_upload_folder: str | None = None, reset_agent_memory: bool = False, **kwargs):
         self.agent = agent
         self.file_upload_folder = Path(file_upload_folder) if file_upload_folder is not None else None
         self.reset_agent_memory = reset_agent_memory
-        self.name = getattr(agent, "name") or "Agent interface"
+        self.name = "WeaveMuseInterface"
         self.description = getattr(agent, "description", None)
+        
+        # Add Gradio required attributes BEFORE calling super().__init__()
+        self.state_session_capacity = 10000  # Default Gradio capacity
+        
         if self.file_upload_folder is not None:
             if not self.file_upload_folder.exists():
                 self.file_upload_folder.mkdir(parents=True, exist_ok=True)
+        
+        # Set default values for our custom arguments, but allow gradio to override them
+        defaults = {
+            "title": "WeaveMuse",
+            "theme": "soft",
+            "css": self._get_custom_css()
+        }
+        
+        # Merge defaults with any kwargs passed from gradio app.py
+        final_kwargs = {**defaults, **kwargs}
+        
+        # Initialize the parent class with all arguments
+        super().__init__(**final_kwargs)
 
+        self._create_app()
 
-    def interact_with_agent(self, prompt, messages, session_state):
-        import gradio as gr
+    def _create_app(self):        
+
+        with self:            
+            # Header
+            gr.HTML("""
+                <div class="main-header">
+                    <h1>
+                        <img class="logo" src="https://raw.githubusercontent.com/emmanouil-karystinaios/emmanouil-karystinaios.github.io/refs/heads/main/static/media/weave_muse_title.png" alt="WeaveMuse Logo"/>                         
+                    </h1>
+                    <p>AI-powered music understanding, generation, and analysis</p>
+                </div>
+            """)
+            with gr.Tabs():
+                with gr.Tab("Chat"):
+                    self._create_chat_interface()
+                with gr.Tab("About"):
+                    self._create_about_interface()        
+
+    def interact_with_agent(self, prompt, messages, session_state):        
 
         # Get the agent type from the template agent
         if "agent" not in session_state:
@@ -178,15 +211,15 @@ class WeaveMuseInterface:
             gr.Button(interactive=False),
         )
 
-    def launch(self, share: bool = True, **kwargs):
-        """
-        Launch the Gradio app with the agent interface.
+    # def launch(self, share: bool = True, **kwargs):
+    #     """
+    #     Launch the Gradio app with the agent interface.
 
-        Args:
-            share (`bool`, defaults to `True`): Whether to share the app publicly.
-            **kwargs: Additional keyword arguments to pass to the Gradio launch method.
-        """
-        self.create_app().launch(debug=True, share=share, **kwargs)
+    #     Args:
+    #         share (`bool`, defaults to `True`): Whether to share the app publicly.
+    #         **kwargs: Additional keyword arguments to pass to the Gradio launch method.
+    #     """
+    #     self._create_app().launch(debug=True, share=share, **kwargs)
 
     def _get_custom_css(self) -> str:
         # Define custom CSS for better styling
@@ -215,6 +248,16 @@ class WeaveMuseInterface:
             margin-inline: auto;
             display: block;            
         }
+        /* Interrupt button styling */
+        .stop-button {
+            background-color: #ff4444 !important;
+            color: white !important;
+            border: 2px solid #cc0000 !important;
+        }
+        .stop-button:hover {
+            background-color: #cc0000 !important;
+            transform: scale(1.05);
+        }
         """
         return custom_css
 
@@ -222,7 +265,6 @@ class WeaveMuseInterface:
         """Extract music generation outputs from agent message"""
         import gradio as gr
         import re
-        import glob
         import os
         from datetime import datetime, timedelta
         
@@ -343,7 +385,6 @@ class WeaveMuseInterface:
 
     def _find_recent_notagen_files(self):
         """Find the most recently created PDF file in NotaGen output directories"""
-        import glob
         import os
         from datetime import datetime, timedelta
         
@@ -456,31 +497,6 @@ class WeaveMuseInterface:
         
         return None, False
 
-    def create_app(self):
-        import gradio as gr
-
-        with gr.Blocks(
-            title="WeaveMuse",
-            theme="soft",
-            css=self._get_custom_css()
-            ) as demo:
-            # logo_src = os.path.join(os.path.dirname(__file__), "static", "logo.png")
-            # <img src="https://github.com/emmanouil-karystinaios/emmanouil-karystinaios.github.io/blob/main/static/media/weave_muse_icon.png" alt="WeaveMuse Logo"/>
-            # Header
-            gr.HTML("""
-                <div class="main-header">
-                    <h1>
-                        <img class="logo" src="https://raw.githubusercontent.com/emmanouil-karystinaios/emmanouil-karystinaios.github.io/refs/heads/main/static/media/weave_muse_title.png" alt="WeaveMuse Logo"/>                         
-                    </h1>
-                    <p>AI-powered music understanding, generation, and analysis</p>
-                </div>
-            """)
-            with gr.Tabs():
-                with gr.Tab("Chat"):
-                    self._create_chat_interface()
-                with gr.Tab("About"):
-                    self._create_about_interface()
-        return demo
 
     def _create_chat_interface(self):
         import gradio as gr
@@ -551,6 +567,7 @@ class WeaveMuseInterface:
                         )
                     with gr.Column(scale=1):
                         submit_btn = gr.Button("Send", variant="primary", size="lg")
+                        interrupt_btn = gr.Button("⏹️ Stop", variant="stop", size="lg", visible=False, elem_classes=["stop-button"])
                         clear_btn = gr.Button("Clear Chat", variant="secondary", size="sm")
                 
                 # Audio upload and playback area
@@ -736,13 +753,20 @@ class WeaveMuseInterface:
             )
 
         # Enhanced agent interaction with audio and PDF handling
-        def interact_with_agent_enhanced(prompt, messages, session_state, audio_files):
+        def interact_with_agent_enhanced(prompt, messages, session_state, audio_files, interrupt_flag=None):
             import gradio as gr
+            
+            # Initialize interrupt flag if not provided
+            if interrupt_flag is None:
+                interrupt_flag = {"interrupted": False}
             
             # Store audio files in session state
             if "audio_files" not in session_state:
                 session_state["audio_files"] = []
             session_state["audio_files"].extend(audio_files)
+            
+            # Store interrupt flag in session state
+            session_state["interrupt_flag"] = interrupt_flag
             
             # Get the agent from session state
             if "agent" not in session_state:
@@ -750,13 +774,31 @@ class WeaveMuseInterface:
 
             try:
                 messages.append(gr.ChatMessage(role="user", content=prompt, metadata={"status": "done"}))
-                yield messages, gr.Audio(visible=False), gr.Row(visible=False), gr.Files(value=None, visible=False), gr.Group(visible=False), gr.File(visible=False)
+                yield messages, gr.Audio(visible=False), gr.Row(visible=False), gr.Files(value=None, visible=False), gr.Group(visible=False), gr.File(visible=False), gr.Button(visible=False), gr.Button(visible=True)
 
                 notagen_audio_found = False  # Track if we found NotaGen audio
                 
                 for msg in stream_to_gradio(
                     session_state["agent"], task=prompt, reset_agent_memory=self.reset_agent_memory
                 ):
+                    # Check for interrupt
+                    if interrupt_flag["interrupted"]:
+                        # Add interruption message
+                        messages.append(gr.ChatMessage(
+                            role="assistant", 
+                            content="⏹️ **Generation interrupted by user.**", 
+                            metadata={"status": "done"}
+                        ))
+                        yield (messages, 
+                               gr.Audio(visible=False), 
+                               gr.Row(visible=False),
+                               gr.Files(value=[], visible=True),
+                               gr.Group(visible=False),
+                               gr.File(visible=False),
+                               gr.Button(visible=True),  # Show submit button
+                               gr.Button(visible=False))  # Hide interrupt button
+                        return
+                    
                     if isinstance(msg, gr.ChatMessage):
                         messages[-1].metadata["status"] = "done"
                         messages.append(msg)
@@ -809,7 +851,9 @@ class WeaveMuseInterface:
                                    gr.Row(visible=bool(audio_path)),
                                    gr.Files(value=download_files_list, visible=bool(download_files_list)),
                                    gr.Group(visible=bool(pdf_file_path)),
-                                   gr.File(value=pdf_file_path, visible=bool(pdf_file_path)))
+                                   gr.File(value=pdf_file_path, visible=bool(pdf_file_path)),
+                                   gr.Button(visible=False),  # Hide submit button
+                                   gr.Button(visible=True))   # Show interrupt button
                         else:
                             # Check for regular audio content
                             audio_path, show_actions = self._extract_audio_from_message(msg)
@@ -819,14 +863,18 @@ class WeaveMuseInterface:
                                        gr.Row(visible=show_actions),
                                        gr.Files(value=[], visible=True),
                                        gr.Group(visible=False),
-                                       gr.File(visible=False))
+                                       gr.File(visible=False),
+                                       gr.Button(visible=False),  # Hide submit button
+                                       gr.Button(visible=True))   # Show interrupt button
                             else:
                                 yield (messages, 
                                        gr.Audio(visible=False), 
                                        gr.Row(visible=False),
                                        gr.Files(value=[], visible=True),
                                        gr.Group(visible=False),
-                                       gr.File(visible=False))
+                                       gr.File(visible=False),
+                                       gr.Button(visible=False),  # Hide submit button
+                                       gr.Button(visible=True))   # Show interrupt button
                             
                     elif isinstance(msg, str):
                         msg = msg.replace("<", r"\<").replace(">", r"\>")
@@ -843,7 +891,9 @@ class WeaveMuseInterface:
                                gr.Row(visible=False),
                                gr.Files(value=[], visible=True),
                                gr.Group(visible=False),
-                               gr.File(visible=False))
+                               gr.File(visible=False),
+                               gr.Button(visible=False),  # Hide submit button
+                               gr.Button(visible=True))   # Show interrupt button
 
                 # Final check for any generated audio files (ONLY if no NotaGen audio was found)
                 if not notagen_audio_found and os.path.exists("/tmp/music_agent_audio/"):
@@ -852,15 +902,15 @@ class WeaveMuseInterface:
                         latest_audio = os.path.join("/tmp/music_agent_audio/", max(audio_files_in_tmp, key=lambda x: os.path.getctime(os.path.join("/tmp/music_agent_audio/", x))))
                         print(f"🎵 DEBUG: Found latest audio file in tmp: {latest_audio}")
                         print(f"🎵 DEBUG: Using fallback audio since no NotaGen audio was found")
-                        yield messages, gr.Audio(value=latest_audio, visible=True), gr.Row(visible=True), gr.Files(value=[], visible=True), gr.Group(visible=False), gr.File(visible=False)
+                        yield messages, gr.Audio(value=latest_audio, visible=True), gr.Row(visible=True), gr.Files(value=[], visible=True), gr.Group(visible=False), gr.File(visible=False), gr.Button(visible=True), gr.Button(visible=False)
                 
             except Exception as e:
-                yield messages, gr.Audio(visible=False), gr.Row(visible=False), gr.Files(value=[], visible=True), gr.Group(visible=False), gr.File(visible=False)
+                yield messages, gr.Audio(visible=False), gr.Row(visible=False), gr.Files(value=[], visible=True), gr.Group(visible=False), gr.File(visible=False), gr.Button(visible=True), gr.Button(visible=False)
                 raise gr.Error(f"Error in interaction: {str(e)}")
 
         # Clear functions
         def clear_chat():
-            return [], gr.Audio(visible=False), gr.Row(visible=False), gr.Files(value=[], visible=True), gr.Group(visible=False), gr.File(visible=False)
+            return [], gr.Audio(visible=False), gr.Row(visible=False), gr.Files(value=[], visible=True), gr.Group(visible=False), gr.File(visible=False), gr.Button(visible=True), gr.Button(visible=False)
         
         def clear_audio_files():
             return [], "No audio files uploaded", gr.Textbox(visible=False)
@@ -885,35 +935,61 @@ class WeaveMuseInterface:
             outputs=[uploaded_audio_files, audio_list, audio_info]
         )
         
+        # Shared interrupt flag for the session
+        interrupt_flag = gr.State({"interrupted": False})
+        
+        # Interrupt function
+        def interrupt_agent(session_state):
+            if "interrupt_flag" in session_state:
+                session_state["interrupt_flag"]["interrupted"] = True
+            return (
+                gr.Button(visible=True),   # Show submit button
+                gr.Button(visible=False)   # Hide interrupt button
+            )
+        
         # Submit handlers
+        def start_interaction(text, audio_files, session_state, interrupt_flag):
+            # Reset interrupt flag
+            interrupt_flag["interrupted"] = False
+            # Store the interrupt flag in session state for the interaction function
+            session_state["interrupt_flag"] = interrupt_flag
+            return log_user_message_with_audio(text, audio_files)
+        
         text_input.submit(
-            log_user_message_with_audio,
-            inputs=[text_input, uploaded_audio_files],
+            start_interaction,
+            inputs=[text_input, uploaded_audio_files, session_state, interrupt_flag],
             outputs=[stored_messages, text_input, submit_btn],
         ).then(
             interact_with_agent_enhanced,
-            inputs=[stored_messages, chatbot, session_state, uploaded_audio_files],
-            outputs=[chatbot, audio_output, audio_actions, download_files, pdf_viewer_group, pdf_viewer]
+            inputs=[stored_messages, chatbot, session_state, uploaded_audio_files, interrupt_flag],
+            outputs=[chatbot, audio_output, audio_actions, download_files, pdf_viewer_group, pdf_viewer, submit_btn, interrupt_btn]
         ).then(
-            lambda: gr.Button(interactive=True),
-            outputs=submit_btn
+            lambda: (gr.Button(interactive=True), gr.Button(visible=False)),
+            outputs=[submit_btn, interrupt_btn]
         )
 
         submit_btn.click(
-            log_user_message_with_audio,
-            inputs=[text_input, uploaded_audio_files],
+            start_interaction,
+            inputs=[text_input, uploaded_audio_files, session_state, interrupt_flag],
             outputs=[stored_messages, text_input, submit_btn],
         ).then(
             interact_with_agent_enhanced,
-            inputs=[stored_messages, chatbot, session_state, uploaded_audio_files],
-            outputs=[chatbot, audio_output, audio_actions, download_files, pdf_viewer_group, pdf_viewer]
+            inputs=[stored_messages, chatbot, session_state, uploaded_audio_files, interrupt_flag],
+            outputs=[chatbot, audio_output, audio_actions, download_files, pdf_viewer_group, pdf_viewer, submit_btn, interrupt_btn]
         ).then(
-            lambda: gr.Button(interactive=True),
-            outputs=submit_btn
+            lambda: (gr.Button(interactive=True), gr.Button(visible=False)),
+            outputs=[submit_btn, interrupt_btn]
+        )
+        
+        # Interrupt handler
+        interrupt_btn.click(
+            interrupt_agent,
+            inputs=[session_state],
+            outputs=[submit_btn, interrupt_btn]
         )
         
         # Clear handlers
-        clear_btn.click(clear_chat, outputs=[chatbot, audio_output, audio_actions, download_files, pdf_viewer_group, pdf_viewer])
+        clear_btn.click(clear_chat, outputs=[chatbot, audio_output, audio_actions, download_files, pdf_viewer_group, pdf_viewer, submit_btn, interrupt_btn])
         clear_audio_btn.click(clear_audio_files, outputs=[uploaded_audio_files, audio_list, audio_info])
         
         # PDF viewer handlers
@@ -1384,31 +1460,4 @@ class WeaveMuseInterface:
                 description = tool_descriptions.get(tool_name, "No description available")
                 gr.Markdown(f"### {tool_name}")
                 gr.Markdown(f"{description}")
-    
-    # def launch(
-    #     self, 
-    #     share: bool = False,
-    #     server_name: str = "0.0.0.0",
-    #     server_port: int = 7860,
-    #     auth: Optional[Tuple[str, str]] = None
-    # ):
-    #     """Launch the Gradio interface."""
-        
-    #     interface = self.create_interface()
-        
-    #     # Configure authentication if provided
-    #     if auth is None and self.config.gradio_auth:
-    #         auth = (self.config.gradio_auth_username, self.config.gradio_auth_password)
-        
-    #     # Launch the interface
-    #     interface.launch(
-    #         share=share or self.config.gradio_share,
-    #         server_name=server_name or self.config.host,
-    #         server_port=server_port or self.config.port,
-    #         auth=auth,
-    #         show_error=True
-    #     )
-
-
-
    
