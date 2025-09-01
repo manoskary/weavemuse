@@ -175,30 +175,45 @@ class StableAudioTool(ManagedDiffusersTool):
             logger.info(f"Generating audio: '{prompt}' ({duration}s, {steps} steps, CFG: {cfg_scale})")
             
             # Setup conditioning
-            conditioning = {
-                "prompt": [prompt],
-                "seconds_start": [0],
-                "seconds_total": [duration]
-            }
+            conditioning = [{
+                "prompt": prompt,
+                "seconds_start": 0,
+                "seconds_total": duration
+            }]
             
-            # Generate audio
-            if generate_diffusion_cond is None:
-                raise ImportError("generate_diffusion_cond not available")
-                
-            # Generate in evaluation mode
+            # Generate audio using the model's generate method
             audio_model.eval()
-            if torch is None:
-                raise ImportError("torch not available")
             with torch.no_grad():
-                output = generate_diffusion_cond(
-                    model=audio_model,
-                    steps=steps,
-                    cfg_scale=int(cfg_scale),  # Convert to int
-                    conditioning=conditioning,
-                    sample_size=int(duration * sample_rate),
-                    sample_rate=sample_rate,
-                    device=self.device
-                )
+                print(f"Debug: About to call model.generate with:")
+                print(f"  model: {type(audio_model)}")
+                print(f"  steps: {steps}")
+                print(f"  cfg_scale: {cfg_scale}")
+                print(f"  conditioning: {conditioning}")
+                print(f"  sample_size: {int(duration * sample_rate)}")
+                print(f"  device: {self.device}")
+                
+                try:
+                    # Use the model's generate method instead of calling generate_diffusion_cond directly
+                    output = audio_model.generate(
+                        conditioning=conditioning,
+                        sample_size=int(duration * sample_rate),
+                        steps=steps,
+                        cfg_scale=cfg_scale,
+                        device=self.device
+                    )
+                    
+                    print(f"Debug: model.generate returned: {type(output)}")
+                    if hasattr(output, 'shape'):
+                        print(f"  shape: {output.shape}")
+                    else:
+                        print(f"  content (first 200 chars): {str(output)[:200]}")
+                        
+                except Exception as e:
+                    print(f"Debug: Exception in model.generate: {e}")
+                    print(f"Debug: Exception type: {type(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    raise
             
             # Save audio to temporary file
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
@@ -253,23 +268,23 @@ class StableAudioTool(ManagedDiffusersTool):
         except Exception as e:
             logger.warning(f"Error during Stable Audio cleanup: {e}")
 
-    def forward(self, prompt, cfg_scale=5, steps=50, duration=30):
+    def forward(self, prompt, duration=None, steps=None, cfg_scale=None):
         """
         Forward method to generate audio.
         
         Args:
-            cfg_scale: Classifier-free guidance scale
-            steps: Number of diffusion steps
             prompt: Text description of the audio
-            duration: Duration in seconds
+            duration: Duration in seconds (default: 30, max: 47)
+            steps: Number of diffusion steps (default: 100, recommended: 50-200)
+            cfg_scale: Classifier-free guidance scale (default: 7.0, range: 1.0-15.0)
             
         Returns:
             Path to generated audio file
         """
         kwargs = {
-            "cfg_scale": cfg_scale,
-            "steps": steps,
             "prompt": prompt,
-            "duration": duration
+            "duration": duration or "30",
+            "steps": steps or "100", 
+            "cfg_scale": cfg_scale or "7.0"
         }
         return super().forward(**kwargs)        

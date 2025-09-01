@@ -215,6 +215,20 @@ class NotaGenTool(ManagedTransformersTool):
             # NotaGen cleanup (minimal since it's mostly function references)
             model.clear()
             
+            # Clean up the global model in the inference module
+            try:
+                from ..models.notagen import inference
+                if hasattr(inference, 'model') and inference.model is not None:
+                    logger.info("Cleaning up global NotaGen model")
+                    # Move model to CPU first
+                    inference.model = inference.model.cpu()
+                    # Delete the model
+                    del inference.model
+                    inference.model = None
+                    logger.info("Global NotaGen model cleaned up")
+            except Exception as e:
+                logger.warning(f"Error cleaning up global NotaGen model: {e}")
+            
             # Force cleanup
             import gc
             gc.collect()
@@ -330,4 +344,4 @@ class NotaGenTool(ManagedTransformersTool):
         }
         
         # Call the parent's forward method which handles async processing
-        return super().forward()    
+        return super().forward(**kwargs)    
