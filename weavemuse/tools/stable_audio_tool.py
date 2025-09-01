@@ -7,21 +7,12 @@ import tempfile
 import os
 from typing import Optional, Dict, Any, Union
 from pathlib import Path
+from smolagents.tools import Tool  # type: ignore
+import torch
+import torchaudio
 
-try:
-    from smolagents.tools import Tool  # type: ignore
-except ImportError:
-    # Fallback for development
-    class Tool:
-        def __init__(self, name: str, description: str, inputs: dict, output_type: str):
-            self.name = name
-            self.description = description
-            self.inputs = inputs
-            self.output_type = output_type
 
-try:
-    import torch
-    import torchaudio
+try:    
     from stable_audio_tools import get_pretrained_model
     from stable_audio_tools.inference.generation import generate_diffusion_cond
     STABLE_AUDIO_AVAILABLE = True
@@ -29,9 +20,7 @@ try:
 except ImportError as e:
     STABLE_AUDIO_AVAILABLE = False
     import_error = str(e)
-    print(f"❌ Stable Audio dependencies failed: {e}")
-    torch = None
-    torchaudio = None
+    print(f"❌ Stable Audio dependencies failed: {e}")    
     get_pretrained_model = None
     generate_diffusion_cond = None
 
@@ -263,3 +252,24 @@ class StableAudioTool(ManagedDiffusersTool):
                 
         except Exception as e:
             logger.warning(f"Error during Stable Audio cleanup: {e}")
+
+    def forward(self, prompt, cfg_scale=5, steps=50, duration=30):
+        """
+        Forward method to generate audio.
+        
+        Args:
+            cfg_scale: Classifier-free guidance scale
+            steps: Number of diffusion steps
+            prompt: Text description of the audio
+            duration: Duration in seconds
+            
+        Returns:
+            Path to generated audio file
+        """
+        kwargs = {
+            "cfg_scale": cfg_scale,
+            "steps": steps,
+            "prompt": prompt,
+            "duration": duration
+        }
+        return super().forward(**kwargs)        

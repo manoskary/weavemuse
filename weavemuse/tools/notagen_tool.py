@@ -7,44 +7,16 @@ import os
 import datetime
 from typing import Optional, Dict, Any, Union
 from pathlib import Path
+import torch            
+hf_hub_download = None
+inference_patch = None
+postprocess_inst_names = None
+abc2xml = None
+xml2 = None
+pdf2img = None
 
-try:
-    from smolagents.tools import Tool  # type: ignore
-except ImportError:
-    # Fallback for development
-    class Tool:
-        def __init__(self, name: str, description: str, inputs: dict, output_type: str):
-            self.name = name
-            self.description = description
-            self.inputs = inputs
-            self.output_type = output_type
 
-try:
-    import torch
-    import torch.nn as nn
-    import numpy as np
-    import requests
-    from huggingface_hub import hf_hub_download
-    # Import the NotaGen inference and conversion functions
-    from ..models.notagen.inference import inference_patch, postprocess_inst_names
-    from ..models.notagen.convert import abc2xml, xml2, pdf2img
-    NOTAGEN_AVAILABLE = True
-    print("✅ NotaGen dependencies loaded successfully!")
-except ImportError as e:
-    NOTAGEN_AVAILABLE = False
-    import_error = str(e)
-    print(f"❌ NotaGen dependencies failed: {e}")
-    torch = None
-    nn = None
-    np = None
-    requests = None
-    hf_hub_download = None
-    inference_patch = None
-    postprocess_inst_names = None
-    abc2xml = None
-    xml2 = None
-    pdf2img = None
-
+from smolagents.tools import Tool  # type: ignore
 from .base_tools import ManagedTransformersTool
 
 logger = logging.getLogger(__name__)
@@ -106,8 +78,7 @@ class NotaGenTool(ManagedTransformersTool):
             output_dir: Directory for output files
             **kwargs: Additional arguments
         """
-        if not NOTAGEN_AVAILABLE:
-            raise ImportError(f"NotaGen dependencies not available: {import_error}")
+        
         
         # NotaGen is smaller model, estimate VRAM usage
         estimated_vram = 2000.0
@@ -133,8 +104,23 @@ class NotaGenTool(ManagedTransformersTool):
         Returns:
             Dictionary containing model and any needed components
         """
-        if not NOTAGEN_AVAILABLE:
-            raise ImportError(f"NotaGen dependencies not available: {import_error}")
+        
+        try:
+            import torch
+            import torch.nn as nn
+            import numpy as np
+            import requests
+            from huggingface_hub import hf_hub_download
+            # Import the NotaGen inference and conversion functions
+            from ..models.notagen.inference import inference_patch, postprocess_inst_names
+            from ..models.notagen.convert import abc2xml, xml2, pdf2img
+            NOTAGEN_AVAILABLE = True
+            print("✅ NotaGen dependencies loaded successfully!")
+        except ImportError as e:
+            NOTAGEN_AVAILABLE = False
+            import_error = str(e)
+            print(f"❌ NotaGen dependencies failed: {e}")            
+            raise ImportError(f"NotaGen dependencies not available: {import_error}")            
             
         logger.info(f"Loading NotaGen model: {self.model_id}")
         
