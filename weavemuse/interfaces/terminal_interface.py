@@ -2,7 +2,6 @@
 WeaveMuse Terminal Interface
 A terminal-based interface for the WeaveMuse music agent framework
 """
-
 import os
 import sys
 import traceback
@@ -13,6 +12,7 @@ from pathlib import Path
 from smolagents import CodeAgent, DuckDuckGoSearchTool
 from smolagents.tools import Tool
 from smolagents import InferenceClientModel
+import torch
 
 
 class WeaveMuseTerminal:
@@ -26,16 +26,15 @@ class WeaveMuseTerminal:
         self.tools: List[Tool] = []
         self.vram_manager = None
         self.tools_initialized = False
-        self.model_choice = None
-        
+        self.model_choice = None        
         print("⚡ WeaveMuse Terminal Interface - Fast Start Mode")
     
     def ask_model_choice(self) -> str:
         """Ask user to choose between local or HuggingFace model."""
         print("\n🤖 Choose your AI model:")
-        print("1. Local Model (similar to GUI app - requires more resources)")
-        print("2. HuggingFace InferenceClient (cloud-based - faster startup)")
-        print("3. Minimal Mode (search-only, no AI model)")
+        print("1. Only Local Models (Requires more resources and loading time)")
+        print("2. HuggingFace cloud-based agent (some local tools - faster startup)")
+        print("3. All Remote (All models and Tools are remote - no resources needed)")
         
         while True:
             try:
@@ -64,6 +63,34 @@ class WeaveMuseTerminal:
             'search': 'DuckDuckGoSearchTool',
             'notagen': 'NotaGenTool', 
             'chat_musician': 'ChatMusicianTool',
+            'audio_flamingo': 'AudioFlamingoTool'
+        }
+
+    def _setup_local_tools(self):
+        """Initialize basic tools only."""
+        if not hasattr(self, '_basic_tools_loaded'):
+            try:
+                from weavemuse.tools.memory_manager import VRAMManager
+                self.vram_manager = VRAMManager()
+                self._basic_tools_loaded = True
+            except Exception as e:
+                print(f"⚠️  VRAM manager not available: {e}")
+        
+        # Always start with search tool
+        self.tools: List[Tool] = [DuckDuckGoSearchTool()]
+        self.available_tools = {
+            # 'search': 'DuckDuckGoSearchTool',
+            'notagen': 'NotaGenTool', 
+            'chat_musician': 'ChatMusicianTool',
+            # 'audio_flamingo': 'AudioFlamingoTool'
+        }
+    
+    def _setup_remote_tools(self):
+        self.tools: List[Tool] = [DuckDuckGoSearchTool()]
+        self.available_tools = {
+            'search': 'DuckDuckGoSearchTool',
+            # 'notagen': 'NotaGenTool', 
+            # 'chat_musician': 'ChatMusicianTool',
             'audio_flamingo': 'AudioFlamingoTool'
         }
     
@@ -121,8 +148,7 @@ class WeaveMuseTerminal:
     def _setup_agent(self):
         """Initialize the agent based on user choice."""
         if not self.model_choice:
-            self.model_choice = self.ask_model_choice()
-        
+            self.model_choice = self.ask_model_choice()        
         print("🤖 Setting up AI agent...")
         
         try:
@@ -130,10 +156,30 @@ class WeaveMuseTerminal:
                 # Local model similar to GUI app
                 print("🔄 Loading local model (similar to GUI app)...")
                 try:
+                    from weavemuse.agents.models import TransformersModel
+                    from transformers import BitsAndBytesConfig
+
+                    quantization_config = BitsAndBytesConfig(
+                            load_in_4bit=True,
+                            bnb_4bit_compute_dtype=torch.bfloat16,
+                            bnb_4bit_use_double_quant=True,
+                            bnb_4bit_quant_type="nf4",
+                        )
                     # Try to use a local model directly
-                    print("⚠️  Local model mode not fully implemented yet.")
-                    print("🔄 Falling back to HuggingFace model...")
+                    model_id = "Qwen/Qwen2.5-Coder-32B-Instruct"
+                    model = TransformersModel(
+                        device_map="auto",
+                        model_id=model_id
+                    )
                     self.model_choice = '2'
+
+                    self.reload_tools("local")
+
+                    self.agent = CodeAgent(
+                        tools=self.tools,
+                        model=model,
+                        stream_outputs=True
+                    )
                 except Exception as e:
                     print(f"❌ Error with local model: {e}")
                     print("🔄 Falling back to HuggingFace model...")
@@ -155,9 +201,20 @@ class WeaveMuseTerminal:
                 print("✅ HuggingFace agent initialized!")
             
             elif self.model_choice == '3':
-                # Minimal mode - no AI model
+                # Minimal mode - no local AI model
                 print("🔧 Minimal mode - search tools only")
-                self.agent = None
+                model = InferenceClientModel(
+                    "Qwen/Qwen2.5-Coder-32B-Instruct",
+                    max_tokens=1000
+                )
+
+                self.reload_tools("remote")
+                
+                self.agent = CodeAgent(
+                    tools=self.tools,
+                    model=model,
+                    stream_outputs=True
+                )
                 print("✅ Minimal mode ready!")
                 
         except Exception as e:
@@ -320,13 +377,20 @@ class WeaveMuseTerminal:
             print(f"Error details: {traceback.format_exc()}")
             return error_msg
     
-    def reload_tools(self):
+    def reload_tools(self, type="all"):
         """Reload tools."""
         print("🔄 Reloading tools...")
         self.tools = [DuckDuckGoSearchTool()]  # Reset to basic tools
         self._basic_tools_loaded = False
-        self._setup_basic_tools()
-    
+        if type == "all":
+            self._setup_basic_tools()
+        elif type == "remote":
+            self._setup_remote_tools()
+        elif type == "local":
+            self._setup_local_tools()
+        else:
+            raise ValueError(f"Unknown tool type: {type}")
+
     def change_model(self):
         """Change AI model."""
         print("🔄 Changing AI model...")
