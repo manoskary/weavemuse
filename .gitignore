@@ -214,3 +214,5 @@ __marimo__/
 weights_*.pth
 /.github/instructions
 *.AppImage
+
+/tests

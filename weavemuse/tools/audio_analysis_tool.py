@@ -79,7 +79,7 @@ class AudioAnalysisTool(Tool):
     }
     output_type="string"
 
-    def __init__(self, device: str = "auto", model: str = "Qwen/Qwen2-Audio-7B"):        
+    def __init__(self, device: str = "auto", model: str = "Qwen/Qwen2-Audio-7B", **kwargs):        
 
         # Set the description attribute directly for smolagents compatibility
         self.description = (
@@ -91,7 +91,8 @@ class AudioAnalysisTool(Tool):
         self.device = device
         self.model_id = model
         self.processor = None
-        self.model_loaded = False  
+        self.model_loaded = False 
+        self.quantization_config = kwargs.get("quantization_config", None) 
 
         super().__init__(
             name=self.name,
@@ -118,8 +119,9 @@ class AudioAnalysisTool(Tool):
                 self.model = Qwen2AudioForConditionalGeneration.from_pretrained(
                     self.model_id, 
                     trust_remote_code=True,                
-                    device_map=self.device
-                )                            
+                    device_map=self.device,
+                    quantization_config=self.quantization_config
+                )
 
             self.processor = AutoProcessor.from_pretrained(
                 self.model_id, 
