@@ -4,35 +4,16 @@ import gradio as gr
 
 
 if gr.NO_RELOAD:
-        
-    # Check VRAM availability and force CPU mode if needed
-    def check_vram_and_set_device():
-        """Check VRAM availability and set appropriate device."""
-        try:
-            if torch.cuda.is_available():
-                # Try to allocate a small tensor to test VRAM
-                test_tensor = torch.zeros(100, device='cuda')
-                del test_tensor
-                torch.cuda.empty_cache()
-                print("✅ CUDA available and working")
-                return "auto"
-            else:
-                print("⚠️  CUDA not available, using CPU")
-                return "cpu"
-        except torch.OutOfMemoryError:
-            print("❌ CUDA out of memory, forcing CPU mode")
-            # Force CPU mode due to VRAM constraints
-            os.environ["CUDA_VISIBLE_DEVICES"] = ""
-            os.environ["USE_CUDA"] = "false"
-            return "cpu"
-        except Exception as e:
-            print(f"⚠️  CUDA error ({e}), using CPU")
-            os.environ["CUDA_VISIBLE_DEVICES"] = ""
-            return "cpu"
-
-    # Check and set device mode
-    device_mode = check_vram_and_set_device()
-    print(f"🖥️  Device mode: {device_mode}")
+    # Import GPU detection utilities
+    from weavemuse.utils.gpu_utils import detect_gpu_capabilities, get_quantization_config, print_gpu_summary, check_force_cpu_mode
+    
+    # Detect GPU capabilities and get optimal model configuration
+    force_cpu = check_force_cpu_mode()
+    gpu_info = detect_gpu_capabilities(force_cpu=force_cpu)
+    print_gpu_summary(gpu_info)
+    
+    # Extract configuration from GPU info
+    device_mode = gpu_info.device_map
 
     from smolagents import (
         load_tool,
@@ -53,37 +34,28 @@ if gr.NO_RELOAD:
     # The cache path is USER_HOME/.cache/huggingface/hub/
     CACHE_PATH = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
 
-    # Model configuration - using a smaller, more manageable model
+    # Model configuration based on GPU detection
     gguf_file = None
-    model_id = "Qwen/Qwen2.5-Coder-14B-Instruct"  # Good balance of capability and size
-
-    # Optimized quantization for VRAM management (only use when device mode is auto/cuda)
-    quantization_config = None
-    if device_mode == "auto" and torch.cuda.is_available() and torch.cuda.device_count() > 0:
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type="nf4",
-        )
-        print("✅ Using 4-bit quantization for CUDA")
+    model_id = gpu_info.recommended_model_id  # Automatically selected based on VRAM tier
+    
+    # Get quantization configuration based on GPU capabilities
+    quantization_config = get_quantization_config(gpu_info)
+    
+    if quantization_config:
+        print("✅ Using 4-bit quantization for optimal VRAM usage")
     else:
-        print("⚠️  Quantization disabled (CPU mode)")
+        print("⚠️  Quantization disabled (CPU mode or not available)")
 
-    # Determine device map based on device mode
-    device_map = "cpu" if device_mode == "cpu" else "auto"
-
-
-    # Create optimized main model (adaptive device mode)
+    # Create optimized main model with automatic configuration
     model = TransformersModel( 
         model_id=model_id, 
         trust_remote_code=True, 
-        device_map=device_map,
+        device_map=gpu_info.device_map,
         torch_dtype="auto",
         gguf_file=gguf_file if gguf_file else None,
         low_cpu_mem_usage=True,
         offload_buffers=True,  
-        quantization_config=quantization_config,  # None for CPU, quantized for CUDA      
+        quantization_config=quantization_config,  # Automatically configured based on GPU tier
     )
 
     # Create web search agent
@@ -139,10 +111,10 @@ from weavemuse.tools.audio_flamingo_tool import AudioFlamingoTool
 
 
 # Create ChatMusician tool for advanced music understanding
-chat_musician_tool = ChatMusicianTool(device=device_mode)
+chat_musician_tool = ChatMusicianTool(device=gpu_info.device_map)
 
 # Create NotaGen tool for symbolic music generation
-notagen_tool = NotaGenTool(device=device_mode, output_dir="/tmp/notagen_output")
+notagen_tool = NotaGenTool(device=gpu_info.device_map, output_dir="/tmp/notagen_output")
 
 # Create Audio Flamingo tool for advanced audio analysis via Gradio Client
 audio_flamingo_tool = AudioFlamingoTool()
@@ -220,8 +192,9 @@ manager_agent = CodeAgent(
         "If a task is not related to music, ask the user to provide a music-related query."
     ),
     add_base_tools=True,
-    stream_outputs=True,    
-    additional_authorized_imports=["os", "pathlib", "tempfile", "shutil", "gradio_client"]
+    stream_outputs=True,
+    max_steps=3,      
+    additional_authorized_imports=[]
 )
 
 # Launch the WeaveMuse interface
