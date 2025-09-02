@@ -140,7 +140,7 @@ symbolic_music_agent = CodeAgent(
     model=model,
     name="symbolic_music_agent",
     description="Generates/Composes symbolic music in ABC notation format with full conversion capabilities. Can create compositions based on musical periods, composers, and instrumentation. Returns a PDF, XML, MIDI, and MP3 of the score.",
-    additional_authorized_imports=["os", "pathlib", "tempfile", "shutil"]
+    max_steps=1
 )
 
 # Create Audio Flamingo agent for advanced audio analysis

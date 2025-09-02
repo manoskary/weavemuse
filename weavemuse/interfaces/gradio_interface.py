@@ -266,6 +266,7 @@ class WeaveMuseInterface(gr.Blocks):
         import gradio as gr
         import re
         import os
+        import glob
         from datetime import datetime, timedelta
         
         content = message.content if hasattr(message, 'content') else str(message)
@@ -363,6 +364,7 @@ class WeaveMuseInterface(gr.Blocks):
     def _is_music_generation_message(self, content):
         """Check if the message indicates music generation has occurred"""
         generation_indicators = [
+            # Music generation terms
             'piano piece',
             'composed',
             'generated',
@@ -370,22 +372,52 @@ class WeaveMuseInterface(gr.Blocks):
             'music generation',
             'musical composition',
             'score',
+            'sheet music',
+            'abc notation',
+            'composition',
+            # Composer names
             'chopin',
             'bach',
             'mozart',
             'beethoven',
+            'debussy',
+            'rachmaninoff',
+            # Musical styles and periods
             'romantic',
             'classical',
             'baroque',
-            'piece in the style'
+            'renaissance',
+            'impressionist',
+            'piece in the style',
+            'mazurka',
+            'waltz',
+            'sonata',
+            'prelude',
+            'etude',
+            # Tool-specific indicators
+            'symbolic_music_agent',
+            '/tmp/notagen_output',
+            '.abc',
+            '.pdf',
+            '.xml',
+            '.mid',
+            '.mp3',
+            'final answer',
+            'abc notation converted'
         ]
         
         content_lower = content.lower()
-        return any(indicator in content_lower for indicator in generation_indicators)
+        has_indicator = any(indicator in content_lower for indicator in generation_indicators)
+        
+        if has_indicator:
+            print(f"🎼 DEBUG: Music generation indicator found in message")
+        
+        return has_indicator
 
     def _find_recent_notagen_files(self):
         """Find the most recently created PDF file in NotaGen output directories"""
         import os
+        import glob
         from datetime import datetime, timedelta
         
         search_dirs = ['/tmp/notagen_output/', '/tmp/music_agent_audio/']
@@ -404,6 +436,8 @@ class WeaveMuseInterface(gr.Blocks):
                             recent_files.append((pdf_file, file_time))
                     except OSError:
                         continue
+            else:
+                print(f"🎼 DEBUG: Directory {search_dir} does not exist")
         
         if recent_files:
             # Return the most recently created file
