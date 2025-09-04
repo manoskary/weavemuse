@@ -270,35 +270,143 @@ class WeaveMuseInterface(gr.Blocks):
         from datetime import datetime, timedelta
         
         content = message.content if hasattr(message, 'content') else str(message)
-        print(f"🎼 DEBUG: Processing message content: {content[:200]}...")  # Show first 200 chars
+        logger.debug(f"Processing message content: {content[:200]}...")  # Show first 200 chars
         
-        # First, look for explicit file paths in the message content
+        # Enhanced patterns to catch NotaGen file paths from various message formats
         notagen_patterns = [
-            r'/tmp/notagen_output/[^\s\n]+\.pdf',
-            r'/tmp/music_agent_audio/[^\s\n]+\.pdf',
-            r'- PDF[:\s]+([^\s\n]+\.pdf)',
-            r'PDF File[:\s]+([^\s\n]+\.pdf)',
-            r'First page[:\s]+([^\s\n]+\.png)'
+            # Direct file paths - check both PDF and ABC files
+            r'/tmp/notagen_output/[^\s\n,\'\"]+\.pdf',
+            r'/tmp/notagen_output/[^\s\n,\'\"]+\.abc',
+            r'/tmp/music_agent_audio/[^\s\n,\'\"]+\.pdf',
+            # From agent responses and final answers
+            r'Final answer:\s*/tmp/notagen_output/[^\s\n,\'\"]+\.(?:abc|pdf)',
+            r'symbolic_music_agent.*?/tmp/notagen_output/[^\s\n,\'\"]+\.(?:abc|pdf)',
+            # From logs and tool outputs
+            r'\'pdf\':\s*\'([^\']+\.pdf)\'',
+            r'"pdf":\s*"([^"]+\.pdf)"',
+            r'\'abc\':\s*\'([^\']+\.abc)\'',
+            r'"abc":\s*"([^"]+\.abc)"',
+            r'ABC notation converted.*?\'pdf\':\s*\'([^\']+)\'',
+            r'ABC notation converted.*?\'abc\':\s*\'([^\']+)\'',
+            # Labeled outputs
+            r'- PDF[:\s]+([^\s\n,\'\"]+\.pdf)',
+            r'- ABC[:\s]+([^\s\n,\'\"]+\.abc)',
+            r'PDF File[:\s]+([^\s\n,\'\"]+\.pdf)',
+            r'ABC File[:\s]+([^\s\n,\'\"]+\.abc)',
+            r'Generated.*?:\s*([^\s\n,\'\"]+\.(?:pdf|abc))',
         ]
         
         pdf_path = None
+        abc_path = None
+        found_explicit_file = False
+        
+        # Search for file paths in message content
         for pattern in notagen_patterns:
-            pdf_match = re.search(pattern, content, re.IGNORECASE)
-            if pdf_match:
-                potential_path = pdf_match.group(1) if pdf_match.lastindex else pdf_match.group(0)
+            matches = re.finditer(pattern, content, re.IGNORECASE)
+            for match in matches:
+                potential_path = match.group(1) if match.lastindex and match.lastindex >= 1 else match.group(0)
+                # Clean up the path (remove quotes, trailing characters)
+                potential_path = potential_path.strip('\'".,')
+                potential_path = re.sub(r'^Final answer:\s*', '', potential_path)
+                
+                logger.debug(f"Found potential path: {potential_path}")
+                
                 if os.path.exists(potential_path):
-                    pdf_path = potential_path
-                    break
+                    if potential_path.endswith('.pdf'):
+                        pdf_path = potential_path
+                        logger.debug(f"Found valid PDF: {pdf_path}")
+                        break
+                    elif potential_path.endswith('.abc'):
+                        abc_path = potential_path
+                        # Convert ABC path to PDF path
+                        base_name = os.path.splitext(potential_path)[0]
+                        potential_pdf = base_name + '.pdf'
+                        if os.path.exists(potential_pdf):
+                            pdf_path = potential_pdf
+                            logger.debug(f"Found PDF from ABC: {pdf_path}")
+                            break
+                        else:
+                            logger.debug(f"No PDF found for ABC file, will use ABC: {potential_path}")
+                            # Store the ABC path for immediate use
+                            abc_path = potential_path
+                            # Mark that we found something to exit the pattern loop
+                            found_explicit_file = True
+                            # Break out of pattern search since we found a valid ABC file
+                            break
+            if pdf_path or found_explicit_file:
+                break
         
         # If no explicit paths found but message indicates music generation, search for recent files
         if not pdf_path and self._is_music_generation_message(content):
-            print("🎼 DEBUG: Music generation detected in message, searching for recent files...")
+            logger.debug("Music generation detected in message, searching for recent files...")
             pdf_path = self._find_recent_notagen_files()
             if pdf_path:
-                print(f"🎼 DEBUG: Found recent NotaGen file: {pdf_path}")
+                logger.debug(f"Found recent NotaGen file: {pdf_path}")
             else:
-                print("🎼 DEBUG: No recent NotaGen files found")
+                logger.debug("No recent PDF files found, searching for ABC files...")
+                abc_path = self._find_recent_abc_files()
+                if abc_path:
+                    logger.debug(f"Found recent ABC file: {abc_path}")
         
+        # If we have an ABC file but no PDF, try to find other formats or use ABC
+        if abc_path and not pdf_path:
+            logger.debug(f"Using ABC file as source: {abc_path}")
+            base_name = os.path.splitext(abc_path)[0]
+            
+            # Try to find any associated files
+            associated_files = []
+            for ext in ['.pdf', '.xml', '.mid', '.mp3', '.png']:
+                if ext == '.png':
+                    # Look for page images
+                    page_files = glob.glob(f"{base_name}_page_*.png")
+                    associated_files.extend(page_files)
+                else:
+                    file_path = base_name + ext
+                    if os.path.exists(file_path):
+                        associated_files.append(file_path)
+            
+            logger.debug(f"Found {len(associated_files)} associated files for ABC")
+            
+            # If we found any associated files, create a minimal response
+            if associated_files or abc_path:
+                # Create download files list
+                download_files_list = [abc_path] + associated_files
+                
+                # If there's a PDF in associated files, use it
+                pdf_files = [f for f in associated_files if f.endswith('.pdf')]
+                if pdf_files:
+                    pdf_path = pdf_files[0]
+                    logger.debug(f"Found PDF in associated files: {pdf_path}")
+                
+                # Return early with what we have
+                pdf_info = None
+                if pdf_path:
+                    # Look for PNG images
+                    png_images = [f for f in associated_files if f.endswith('.png')]
+                    if png_images:
+                        # Safe sorting by page number
+                        def extract_page_num(filename):
+                            match = re.search(r'page_(\d+)', filename)
+                            return int(match.group(1)) if match else 0
+                        
+                        png_images.sort(key=extract_page_num)
+                        pdf_info = {
+                            'pdf_path': pdf_path,
+                            'images': png_images,
+                            'first_page': png_images[0] if png_images else None,
+                            'pages': len(png_images),
+                            'current_page': 1
+                        }
+                
+                # Look for audio files
+                audio_path = None
+                audio_files = [f for f in associated_files if f.endswith(('.mp3', '.wav', '.flac', '.ogg', '.m4a'))]
+                if audio_files:
+                    audio_path = audio_files[0]
+                    logger.debug(f"Found audio file: {audio_path}")
+                
+                return pdf_info, audio_path, download_files_list
+
         if pdf_path:
             # Look for associated PNG images (NotaGen creates these)
             base_name = os.path.splitext(pdf_path)[0]
@@ -396,6 +504,8 @@ class WeaveMuseInterface(gr.Blocks):
             'etude',
             # Tool-specific indicators
             'symbolic_music_agent',
+            'successfully generated music composition',
+            'generated files',
             '/tmp/notagen_output',
             '.abc',
             '.pdf',
@@ -410,7 +520,7 @@ class WeaveMuseInterface(gr.Blocks):
         has_indicator = any(indicator in content_lower for indicator in generation_indicators)
         
         if has_indicator:
-            print(f"🎼 DEBUG: Music generation indicator found in message")
+            logger.debug("Music generation indicator found in message")
         
         return has_indicator
 
@@ -423,27 +533,85 @@ class WeaveMuseInterface(gr.Blocks):
         search_dirs = ['/tmp/notagen_output/', '/tmp/music_agent_audio/']
         recent_files = []
         
-        # Look for PDF files created in the last 5 minutes
-        cutoff_time = datetime.now() - timedelta(minutes=5)
+        # Look for PDF files created in the last 10 minutes (increased from 5 minutes)
+        cutoff_time = datetime.now() - timedelta(minutes=10)
+        
+        logger.debug(f"Searching for files newer than {cutoff_time}")
         
         for search_dir in search_dirs:
             if os.path.exists(search_dir):
+                logger.debug(f"Searching in directory: {search_dir}")
                 pdf_files = glob.glob(os.path.join(search_dir, '*.pdf'))
+                logger.debug(f"Found {len(pdf_files)} PDF files in {search_dir}")
+                
                 for pdf_file in pdf_files:
                     try:
                         file_time = datetime.fromtimestamp(os.path.getctime(pdf_file))
+                        logger.debug(f"File {os.path.basename(pdf_file)} created at {file_time}")
                         if file_time > cutoff_time:
                             recent_files.append((pdf_file, file_time))
-                    except OSError:
+                            logger.debug(f"Added {pdf_file} to recent files")
+                        else:
+                            logger.debug(f"File {pdf_file} too old ({file_time} < {cutoff_time})")
+                    except OSError as e:
+                        logger.debug(f"Error accessing {pdf_file}: {e}")
                         continue
             else:
-                print(f"🎼 DEBUG: Directory {search_dir} does not exist")
+                logger.debug(f"Directory {search_dir} does not exist")
         
         if recent_files:
             # Return the most recently created file
             recent_files.sort(key=lambda x: x[1], reverse=True)
-            return recent_files[0][0]
+            latest_file = recent_files[0][0]
+            logger.debug(f"Returning most recent file: {latest_file}")
+            return latest_file
         
+        logger.debug("No recent files found")
+        return None
+
+    def _find_recent_abc_files(self):
+        """Find the most recently created ABC file in NotaGen output directories"""
+        import os
+        import glob
+        from datetime import datetime, timedelta
+        
+        search_dirs = ['/tmp/notagen_output/', '/tmp/music_agent_audio/']
+        recent_files = []
+        
+        # Look for ABC files created in the last 10 minutes
+        cutoff_time = datetime.now() - timedelta(minutes=10)
+        
+        logger.debug(f"Searching for ABC files newer than {cutoff_time}")
+        
+        for search_dir in search_dirs:
+            if os.path.exists(search_dir):
+                logger.debug(f"Searching in directory: {search_dir}")
+                abc_files = glob.glob(os.path.join(search_dir, '*.abc'))
+                logger.debug(f"Found {len(abc_files)} ABC files in {search_dir}")
+                
+                for abc_file in abc_files:
+                    try:
+                        file_time = datetime.fromtimestamp(os.path.getctime(abc_file))
+                        logger.debug(f"ABC file {os.path.basename(abc_file)} created at {file_time}")
+                        if file_time > cutoff_time:
+                            recent_files.append((abc_file, file_time))
+                            logger.debug(f"Added {abc_file} to recent ABC files")
+                        else:
+                            logger.debug(f"ABC file {abc_file} too old ({file_time} < {cutoff_time})")
+                    except OSError as e:
+                        logger.debug(f"Error accessing {abc_file}: {e}")
+                        continue
+            else:
+                logger.debug(f"Directory {search_dir} does not exist")
+        
+        if recent_files:
+            # Return the most recently created file
+            recent_files.sort(key=lambda x: x[1], reverse=True)
+            latest_file = recent_files[0][0]
+            logger.debug(f"Returning most recent ABC file: {latest_file}")
+            return latest_file
+        
+        logger.debug("No recent ABC files found")
         return None
     
     def _pdf_to_images(self, pdf_path):
@@ -840,9 +1008,9 @@ class WeaveMuseInterface(gr.Blocks):
                         # Check for music generation outputs (NotaGen)
                         pdf_info, audio_path, download_files_list = self._extract_music_outputs(msg)
                         
-                        print(f"🎼 DEBUG: Extraction results - PDF: {bool(pdf_info)}, Audio: {bool(audio_path)}, Files: {len(download_files_list) if download_files_list else 0}")
+                        logger.debug(f"Extraction results - PDF: {bool(pdf_info)}, Audio: {bool(audio_path)}, Files: {len(download_files_list) if download_files_list else 0}")
                         if download_files_list:
-                            print(f"🎼 DEBUG: Download files: {download_files_list}")
+                            logger.debug(f"Download files: {download_files_list}")
                         
                         if pdf_info:
                             # Add image to the message content using proper file path for Gradio
@@ -850,7 +1018,7 @@ class WeaveMuseInterface(gr.Blocks):
                             if pdf_info.get('first_page'):
                                 # Get the image path and ensure it's accessible by Gradio
                                 image_path = pdf_info.get('first_page')
-                                print(f"🎼 DEBUG: Embedding image in message: {image_path}")
+                                logger.debug(f"Embedding image in message: {image_path}")
                                 
                                 # For Gradio ChatInterface, we need to provide a simple text message
                                 # The image will be handled separately by the download files
@@ -869,7 +1037,7 @@ class WeaveMuseInterface(gr.Blocks):
                             # Mark that we found NotaGen audio
                             if audio_path:
                                 notagen_audio_found = True
-                                print(f"🎼 DEBUG: NotaGen audio found: {audio_path}")
+                                logger.debug(f"NotaGen audio found: {audio_path}")
                             
                             # Find PDF file for the viewer
                             pdf_file_path = None
@@ -877,7 +1045,7 @@ class WeaveMuseInterface(gr.Blocks):
                                 pdf_files = [f for f in download_files_list if f.endswith('.pdf')]
                                 if pdf_files:
                                     pdf_file_path = pdf_files[0]  # Use the first PDF file
-                                    print(f"🎼 DEBUG: PDF file for viewer: {pdf_file_path}")
+                                    logger.debug(f"PDF file for viewer: {pdf_file_path}")
                             
                             # Prioritize NotaGen audio over generic generated audio
                             yield (messages, 
@@ -934,8 +1102,8 @@ class WeaveMuseInterface(gr.Blocks):
                     audio_files_in_tmp = [f for f in os.listdir("/tmp/music_agent_audio/") if f.endswith(('.wav', '.mp3', '.flac', '.ogg', '.m4a'))]
                     if audio_files_in_tmp:
                         latest_audio = os.path.join("/tmp/music_agent_audio/", max(audio_files_in_tmp, key=lambda x: os.path.getctime(os.path.join("/tmp/music_agent_audio/", x))))
-                        print(f"🎵 DEBUG: Found latest audio file in tmp: {latest_audio}")
-                        print(f"🎵 DEBUG: Using fallback audio since no NotaGen audio was found")
+                        logger.debug(f"Found latest audio file in tmp: {latest_audio}")
+                        logger.debug("Using fallback audio since no NotaGen audio was found")
                         yield messages, gr.Audio(value=latest_audio, visible=True), gr.Row(visible=True), gr.Files(value=[], visible=True), gr.Group(visible=False), gr.File(visible=False), gr.Button(visible=True), gr.Button(visible=False)
                 
             except Exception as e:

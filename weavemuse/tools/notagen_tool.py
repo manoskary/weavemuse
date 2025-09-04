@@ -41,7 +41,7 @@ class NotaGenTool(ManagedTransformersTool):
     name = "notagen"
     description = (
         "Generates symbolic music in ABC notation format with full conversion capabilities. "
-        "Can create compositions based on text descriptions, musical styles, periods, "
+        "Can create compositions only accepts three parameters: musical period, composer, and instrumentation (Use Piano for better results). "
         "composers, and instrumentation. Supports conditional generation with format: "
         "'Period-Composer-Instrumentation' (e.g., 'Romantic-Chopin-Piano'). "
         "Automatically converts to various formats including PDF for visual display."
@@ -194,11 +194,36 @@ class NotaGenTool(ManagedTransformersTool):
 
             logger.info("Converting ABC to other formats...")
 
-            conversion_results = self._convert_files(abc_filename, abc_content, postprocessed_abc)
+            conversion_results = self._convert_files(abc_filename, abc_content, postprocessed_abc, model)
 
             logger.info(f"ABC notation converted to other formats: {conversion_results}")
 
-            return postprocessed_abc_path
+            # Create a formatted response that the interface can parse
+            response_parts = [
+                f"Successfully generated music composition: {period}-{composer}-{instrumentation}",
+                f"\nGenerated files:",
+                f"- ABC: {postprocessed_abc_path}"
+            ]
+            
+            # Add other file formats if they exist
+            if "pdf" in conversion_results and os.path.exists(conversion_results["pdf"]):
+                response_parts.append(f"- PDF: {conversion_results['pdf']}")
+            if "xml" in conversion_results and os.path.exists(conversion_results["xml"]):
+                response_parts.append(f"- XML: {conversion_results['xml']}")
+            if "mid" in conversion_results and os.path.exists(conversion_results["mid"]):
+                response_parts.append(f"- MIDI: {conversion_results['mid']}")
+            if "mp3" in conversion_results and os.path.exists(conversion_results["mp3"]):
+                response_parts.append(f"- MP3: {conversion_results['mp3']}")
+            
+            # Include preview of ABC content
+            response_parts.append(f"\nABC notation preview:")
+            preview_content = postprocessed_abc[:300] + "..." if len(postprocessed_abc) > 300 else postprocessed_abc
+            response_parts.append(f"```\n{preview_content}\n```")
+            
+            final_response = "\n".join(response_parts)
+            logger.info(f"Returning formatted response: {final_response[:200]}...")
+            
+            return final_response
 
         except Exception as e:
             logger.error(f"Error generating ABC notation: {e}")
@@ -240,45 +265,83 @@ class NotaGenTool(ManagedTransformersTool):
         except Exception as e:
             logger.warning(f"Error during NotaGen cleanup: {e}")
 
-    def _convert_files(self, filename_base: str, abc_content: str, postprocessed_abc: str) -> Dict[str, Any]:
+    def forward(self, period: str, composer: str, instrumentation: str) -> str:
+        """
+        Generate symbolic music using NotaGen.
+        
+        Args:
+            period: Musical period (e.g., Baroque, Classical, Romantic)
+            composer: Composer style to emulate (e.g., Bach, Mozart, Chopin)
+            instrumentation: Instruments to use (e.g., Piano, Violin, Orchestra)
+            
+        Returns:
+            Path to generated ABC file or error message
+        """
+        # Convert explicit parameters to kwargs and call parent's forward method
+        kwargs = {
+            "period": period,
+            "composer": composer,
+            "instrumentation": instrumentation
+        }
+        
+        # Call the parent's forward method which handles the VRAM management
+        return super().forward(**kwargs)
+
+    def _convert_files(self, filename_base: str, abc_content: str, postprocessed_abc: str, model: Dict[str, Any]) -> Dict[str, Any]:
         """Convert ABC to various formats and generate images."""
         file_paths: Dict[str, Any] = {
             'abc_preprocessed': os.path.join(self.output_dir, f"{filename_base}_preprocessed.abc"),
             'abc': os.path.join(self.output_dir, f"{filename_base}.abc")
         }
         
-        # original_cwd is the 
+        # Store original working directory
         original_cwd = os.getcwd()
         logger.info(f"Current working directory: {original_cwd}")
         
-        filename_base = os.path.join(self.output_dir, filename_base)
+        # Get conversion functions from model
+        convert_fns = model.get("convert_fns", {})
+        abc2xml_fn = convert_fns.get("abc2xml")
+        xml2_fn = convert_fns.get("xml2")
+        pdf2img_fn = convert_fns.get("pdf2img")
+        
         try:
             # Change to output directory for conversion
             os.chdir(self.output_dir)
             logger.info(f"Changed working directory to: {self.output_dir}")
             
-            # Convert ABC to XML
-            if abc2xml is not None:                
-                abc2xml(filename_base)
+            # Convert ABC to XML (use just the base name since we're in the output dir)
+            if abc2xml_fn is not None:
+                logger.info(f"Converting ABC to XML: {filename_base}")
+                abc2xml_fn(filename_base)
+                logger.info(f"ABC to XML conversion completed")
 
             # Convert XML to PDF
-            if xml2 is not None:
-                xml2(filename_base, 'pdf')
+            if xml2_fn is not None:
+                logger.info(f"Converting XML to PDF: {filename_base}")
+                xml2_fn(filename_base, 'pdf')
+                logger.info(f"XML to PDF conversion completed")
             
-                # Convert XML to MIDI            
-                xml2(f"{filename_base}", 'mid')
+                # Convert XML to MIDI
+                logger.info(f"Converting XML to MIDI: {filename_base}")
+                xml2_fn(filename_base, 'mid')
+                logger.info(f"XML to MIDI conversion completed")
                 
-                # Convert XML to MP3                
-                xml2(f"{filename_base}", 'mp3')
+                # Convert XML to MP3
+                logger.info(f"Converting XML to MP3: {filename_base}")
+                xml2_fn(filename_base, 'mp3')
+                logger.info(f"XML to MP3 conversion completed")
             
             # Convert PDF to images
             image_paths: list = []
-            if pdf2img is not None:
-                images = pdf2img(filename_base)
+            if pdf2img_fn is not None:
+                logger.info(f"Converting PDF to images: {filename_base}")
+                images = pdf2img_fn(filename_base)
+                logger.info(f"PDF to images conversion completed, got {len(images) if images else 0} images")
                 for i, image in enumerate(images):
                     img_path = os.path.join(self.output_dir, f"{filename_base}_page_{i+1}.png")
                     image.save(img_path, "PNG")
                     image_paths.append(img_path)
+                    logger.info(f"Saved image: {img_path}")
             
             # Update file paths            
             file_paths['xml'] = os.path.join(self.output_dir, f"{filename_base}.xml")
@@ -287,10 +350,12 @@ class NotaGenTool(ManagedTransformersTool):
             file_paths['mp3'] = os.path.join(self.output_dir, f"{filename_base}.mp3")
             file_paths['images'] = image_paths
             file_paths['pages'] = len(image_paths)
-            file_paths['filename_base'] = filename_base
+            file_paths['filename_base'] = os.path.join(self.output_dir, filename_base)
             
         except Exception as e:
             logger.error(f"Error converting files: {e}")
+            import traceback
+            logger.error(f"Conversion error traceback: {traceback.format_exc()}")
             file_paths['conversion_error'] = str(e)
         finally:
             os.chdir(original_cwd)
@@ -321,27 +386,3 @@ class NotaGenTool(ManagedTransformersTool):
             return response
         else:
             return f"Generation failed: {result.get('error', 'Unknown error')}"    
-    
-    def forward(self, period: str, composer: str, instrumentation: str) -> str:
-        """
-        Generate symbolic music using NotaGen.
-        
-        This method provides the smolagents-compatible interface with explicit parameters.
-        
-        Args:
-            period: Musical period (e.g., Baroque, Classical, Romantic)
-            composer: Composer style to emulate (e.g., Bach, Mozart, Chopin)
-            instrumentation: Instruments to use (e.g., Piano, Violin, Orchestra)
-            
-        Returns:
-            Path to generated ABC file or error message
-        """
-        # Convert to kwargs for internal processing
-        kwargs = {
-            "period": period,
-            "composer": composer,
-            "instrumentation": instrumentation
-        }
-        
-        # Call the parent's forward method which handles async processing
-        return super().forward(**kwargs)    
