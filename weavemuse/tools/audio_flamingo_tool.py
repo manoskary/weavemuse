@@ -9,7 +9,17 @@ import base64
 import io
 import logging
 import tempfile
+import os
 from typing import Any, Dict
+
+try:
+    import librosa
+    import soundfile as sf
+    AUDIO_LIBS_AVAILABLE = True
+except ImportError:
+    AUDIO_LIBS_AVAILABLE = False
+    librosa = None
+    sf = None
 
 from gradio_client import Client, handle_file
 from smolagents.tools import Tool
@@ -86,33 +96,23 @@ class AudioFlamingoTool(Tool):
             if self.client is None:
                 return "Error: Audio Flamingo client could not be initialized"
             
-            # Load audio with librosa to bypass file system restrictions
-            logger.info(f"Loading audio file: {audio_file}")
+            # Check if audio file exists
+            if not os.path.exists(audio_file):
+                return f"Error: Audio file not found: {audio_file}"
             
-            # Read audio data with librosa
-            audio_data, sample_rate = librosa.load(audio_file, sr=None)
+            logger.info(f"Processing audio file: {audio_file}")
             
-            # Create a temporary WAV file in memory
-            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
-                # Write audio data to temporary file
-                sf.write(temp_file.name, audio_data, sample_rate)
-                temp_file_path = temp_file.name
+            # Check if audio file exists
+            if not os.path.exists(audio_file):
+                return f"Error: Audio file not found: {audio_file}"
             
-            logger.info(f"Audio loaded successfully, sample rate: {sample_rate}, duration: {len(audio_data)/sample_rate:.2f}s")
-            
-            # Call the Gradio client with the temporary file
+            # Call the Gradio client directly with the file path
+            # handle_file() will handle the file upload to the remote space
             result = self.client.predict(
                 audio_file=handle_file(audio_file),
                 prompt_text=query.strip(),
                 api_name="/single_turn_infer"
             )
-            
-            # Clean up temporary file
-            import os
-            try:
-                os.unlink(temp_file_path)
-            except Exception as e:
-                logger.warning(f"Failed to clean up temporary file: {e}")
             
             return str(result)
             
