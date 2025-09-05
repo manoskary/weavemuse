@@ -120,7 +120,7 @@ notagen_tool = NotaGenTool(device=gpu_info.device_map, output_dir="/tmp/notagen_
 audio_flamingo_tool = AudioFlamingoTool()
 
 # Create Stable Audio tool for audio generation (temporarily disabled to focus on NotaGen and ChatMusician)
-# stable_audio_tool = StableAudioTool(device="auto")
+stable_audio_tool = StableAudioTool(device="auto")
 
 # Create Audio Analysis tool (commented out to save VRAM)  
 # audio_analysis_tool = AudioAnalysisTool(device="auto")
@@ -159,12 +159,12 @@ audio_flamingo_agent = CodeAgent(
 )
 
 # Audio generation and analysis agents (temporarily disabled to focus on NotaGen and ChatMusician)
-# stable_audio_agent = CodeAgent(
-#     tools=[stable_audio_tool],
-#     model=model,
-#     name="audio_generation_agent",
-#     description="Generates audio from text descriptions. Use the 'prompt' argument to specify what you want to hear."
-# )
+stable_audio_agent = CodeAgent(
+    tools=[stable_audio_tool],
+    model=model,
+    name="audio_generation_agent",
+    description="Generates audio from text descriptions. Use the 'prompt' argument to specify what you want to hear."
+)
 # 
 # audio_analysis_agent = CodeAgent(
 #     tools=[audio_analysis_tool],
@@ -182,11 +182,12 @@ manager_agent = CodeAgent(
         chat_musician_agent, 
         symbolic_music_agent,
         audio_flamingo_agent,
+        stable_audio_agent,
     ],
     name="music_manager_agent",
     description=(
         "Manages music-related tasks, including web searches, advanced music analysis, "
-        "symbolic music generation, and audio analysis using Audio Flamingo. "
+        "symbolic music generation, audio music generation, and audio analysis using Audio Flamingo. "
         "When users upload audio files for analysis, forward the EXACT file path to the "
         "audio_flamingo_agent without checking if files exist first. "
         "If a task is not related to music, ask the user to provide a music-related query."
