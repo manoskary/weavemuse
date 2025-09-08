@@ -5,6 +5,7 @@ Stable Audio Tool - High-quality audio generation using Stable Audio models.
 import logging
 import tempfile
 import os
+import time
 from typing import Optional, Dict, Any, Union
 from pathlib import Path
 from smolagents.tools import Tool  # type: ignore
@@ -48,6 +49,7 @@ class StableAudioTool(ManagedDiffusersTool):
         "High-quality audio generation tool using Stable Audio models. "
         "Creates music, sound effects, and ambient audio from text descriptions "
         "with precise control over duration and style."
+        "Returns the path to the generated audio file."
     )
     inputs = {
         "prompt": {
@@ -100,7 +102,7 @@ class StableAudioTool(ManagedDiffusersTool):
             priority=3,  # Medium priority tool
             **kwargs
         )
-        
+        self.output_dir = Path(kwargs.get("output_dir", "/tmp/stable_audio"))
         logger.info(f"Stable Audio tool initialized (lazy loading enabled)")
     
     def _load_model(self) -> Dict[str, Any]:
@@ -215,10 +217,13 @@ class StableAudioTool(ManagedDiffusersTool):
                     traceback.print_exc()
                     raise
             
-            # Save audio to temporary file
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-                temp_path = f.name
-            
+            # Save audio to output_dir
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+            # give the audio a timestamped filename            
+            timestamp = int(time.time())
+            output_filename = f"stable_audio_{timestamp}.wav"
+            temp_path = self.output_dir / output_filename
+
             if torchaudio is None:
                 raise ImportError("torchaudio not available")
                 
@@ -233,7 +238,7 @@ class StableAudioTool(ManagedDiffusersTool):
             torchaudio.save(temp_path, output.cpu(), sample_rate)
             
             logger.info(f"Audio generated successfully: {temp_path}")
-            return temp_path
+            return str(temp_path)
             
         except Exception as e:
             logger.error(f"Error generating audio: {e}")
