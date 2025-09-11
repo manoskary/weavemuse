@@ -28,9 +28,6 @@ if gr.NO_RELOAD:
     from transformers import BitsAndBytesConfig
 
 
-    
-
-
     # The cache path is USER_HOME/.cache/huggingface/hub/
     CACHE_PATH = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
 
@@ -120,10 +117,10 @@ notagen_tool = NotaGenTool(device=gpu_info.device_map, output_dir="/tmp/notagen_
 audio_flamingo_tool = AudioFlamingoTool()
 
 # Create Stable Audio tool for audio generation (temporarily disabled to focus on NotaGen and ChatMusician)
-stable_audio_tool = StableAudioTool(device="auto")
+stable_audio_tool = StableAudioTool(device="auto", output_dir="/tmp/stable_audio")
 
 # Create Audio Analysis tool (commented out to save VRAM)  
-# audio_analysis_tool = AudioAnalysisTool(device="auto")
+audio_analysis_tool = AudioAnalysisTool(device="auto")
 
 # Create ChatMusician agent for advanced music understanding
 chat_musician_agent = CodeAgent(
@@ -144,18 +141,20 @@ symbolic_music_agent = CodeAgent(
 )
 
 # Create Audio Flamingo agent for advanced audio analysis
-audio_flamingo_agent = CodeAgent(
-    tools=[audio_flamingo_tool],
+audio_analysis_agent = CodeAgent(
+    tools=[audio_flamingo_tool, audio_analysis_tool],
     model=model,
-    name="audio_flamingo_agent",
+    name="audio_analysis_agent",
     description=(
-        "Analyzes audio files using NVIDIA's Audio Flamingo model. "
+        "Analyzes audio files using NVIDIA's Audio Flamingo model or other audio analysis tools. "
         "Can answer questions about audio content, describe musical elements, "
         "identify sounds, and provide detailed acoustic analysis. "
-        "IMPORTANT: When users upload audio files, use the exact file path provided "
+        "IMPORTANT: When users upload audio files, use the exact file path provided"
         "without checking if the file exists first. The tool will handle file validation internally."
+        "Use first the Audio Flamingo tool, and if it fails, fall back to the Audio Analysis tool."
     ),
-    additional_authorized_imports=["gradio_client", "os", "pathlib", "tempfile", "shutil"]
+    additional_authorized_imports=["gradio_client", "os", "pathlib", "tempfile", "shutil"],
+    max_steps=2
 )
 
 # Audio generation and analysis agents (temporarily disabled to focus on NotaGen and ChatMusician)
@@ -181,7 +180,7 @@ manager_agent = CodeAgent(
         web_agent,
         chat_musician_agent, 
         symbolic_music_agent,
-        audio_flamingo_agent,
+        audio_analysis_agent,
         stable_audio_agent,
     ],
     name="music_manager_agent",
