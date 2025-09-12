@@ -56,13 +56,7 @@ if gr.NO_RELOAD:
     )
 
     # Create web search agent
-    web_agent = CodeAgent(
-        tools=[WebSearchTool()],
-        model=model,
-        name="web_search_agent",
-        description="Runs web searches for you. Give it your query as an argument.",
-        additional_authorized_imports=["os", "pathlib", "tempfile"]
-    )
+    
 
     # Create a conversational tool when the users queries are not about music. The tool politely replies and prompts the user to ask about music-related topics.
 
@@ -100,89 +94,15 @@ if gr.NO_RELOAD:
     conversational_tool = ConversationalTool()
 
 
-from weavemuse.tools.stable_audio_tool import StableAudioTool
-from weavemuse.tools.audio_analysis_tool import AudioAnalysisTool
-from weavemuse.tools.notagen_tool import NotaGenTool
-from weavemuse.tools.chat_musician_tool import ChatMusicianTool
-from weavemuse.tools.audio_flamingo_tool import AudioFlamingoTool
+from weavemuse.agents.agents_as_tools import get_weavemuse_agents_as_tools
 
-
-# Create ChatMusician tool for advanced music understanding
-chat_musician_tool = ChatMusicianTool(device=gpu_info.device_map)
-
-# Create NotaGen tool for symbolic music generation
-notagen_tool = NotaGenTool(device=gpu_info.device_map, output_dir="/tmp/notagen_output")
-
-# Create Audio Flamingo tool for advanced audio analysis via Gradio Client
-audio_flamingo_tool = AudioFlamingoTool()
-
-# Create Stable Audio tool for audio generation (temporarily disabled to focus on NotaGen and ChatMusician)
-stable_audio_tool = StableAudioTool(device="auto", output_dir="/tmp/stable_audio")
-
-# Create Audio Analysis tool (commented out to save VRAM)  
-audio_analysis_tool = AudioAnalysisTool(device="auto")
-
-# Create ChatMusician agent for advanced music understanding
-chat_musician_agent = CodeAgent(
-    tools=[chat_musician_tool],
-    model=model,
-    name="chat_musician_agent", 
-    description="Advanced music understanding and analysis using AI. Can analyze musical structures, provide composition advice, and help with complex music theory questions.",
-    additional_authorized_imports=["os", "pathlib", "tempfile"]
-)
-
-# Create symbolic music generation agent 
-symbolic_music_agent = CodeAgent(
-    tools=[notagen_tool],
-    model=model,
-    name="symbolic_music_agent",
-    description="Generates/Composes symbolic music in ABC notation format with full conversion capabilities. Can create compositions based on musical periods, composers, and instrumentation. Returns a PDF, XML, MIDI, and MP3 of the score.",
-    max_steps=1
-)
-
-# Create Audio Flamingo agent for advanced audio analysis
-audio_analysis_agent = CodeAgent(
-    tools=[audio_flamingo_tool, audio_analysis_tool],
-    model=model,
-    name="audio_analysis_agent",
-    description=(
-        "Analyzes audio files using NVIDIA's Audio Flamingo model or other audio analysis tools. "
-        "Can answer questions about audio content, describe musical elements, "
-        "identify sounds, and provide detailed acoustic analysis. "
-        "IMPORTANT: When users upload audio files, use the exact file path provided"
-        "without checking if the file exists first. The tool will handle file validation internally."
-        "Use first the Audio Flamingo tool, and if it fails, fall back to the Audio Analysis tool."
-    ),
-    additional_authorized_imports=["gradio_client", "os", "pathlib", "tempfile", "shutil"],
-    max_steps=2
-)
-
-# Audio generation and analysis agents (temporarily disabled to focus on NotaGen and ChatMusician)
-stable_audio_agent = CodeAgent(
-    tools=[stable_audio_tool],
-    model=model,
-    name="audio_generation_agent",
-    description="Generates audio from text descriptions. Use the 'prompt' argument to specify what you want to hear."
-)
-# 
-# audio_analysis_agent = CodeAgent(
-#     tools=[audio_analysis_tool],
-#     model=model,
-#     name="audio_analysis_agent", 
-#     description="Analyzes audio files using AI to provide detailed descriptions, musical analysis, and insights."
-# )
+weavemuse_tools = get_weavemuse_agents_as_tools(model=model, device_map=gpu_info.device_map, notagen_output_dir="/tmp/notagen_output", stable_audio_output_dir="/tmp/stable_audio")
 
 # Main manager agent
 manager_agent = CodeAgent(
     tools=[conversational_tool], 
     model=model, 
-    managed_agents=[
-        web_agent,
-        chat_musician_agent, 
-        symbolic_music_agent,
-        audio_analysis_agent,
-        stable_audio_agent,
-    ],
+    managed_agents=weavemuse_tools,
     name="music_manager_agent",
     description=(
         "Manages music-related tasks, including web searches, advanced music analysis, "
