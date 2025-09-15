@@ -35,14 +35,18 @@ def create_symbolic_music_agent(model, device_map="auto", output_dir="/tmp/notag
     )  
     return symbolic_music_agent
 
-def create_audio_analysis_agent(model, device_map="auto"):
+def create_audio_analysis_agent(model, device_map="auto", remote_only=False):
     # Create Audio Flamingo tool for advanced audio analysis via Gradio Client
     audio_flamingo_tool = AudioFlamingoTool()
-    # Create Audio Analysis tool (commented out to save VRAM)  
-    audio_analysis_tool = AudioAnalysisTool(device=device_map)
+    if not remote_only:
+        # Create Audio Analysis tool (commented out to save VRAM)      
+        audio_analysis_tool = AudioAnalysisTool(device=device_map)
+        tl = [audio_flamingo_tool, audio_analysis_tool]
+    else:
+        tl = [audio_flamingo_tool]
     # Create Audio Flamingo agent for advanced audio analysis
     audio_analysis_agent = CodeAgent(
-        tools=[audio_flamingo_tool, audio_analysis_tool],
+        tools=tl,
         model=model,
         name="audio_analysis_agent",
         description=(
@@ -71,7 +75,7 @@ def create_audio_generation_agent(model, device_map="auto", output_dir="/tmp/sta
     return audio_generation_agent
 
 
-def get_weavemuse_agents_as_tools(model=None, device_map="auto", notagen_output_dir="/tmp/notagen_output", stable_audio_output_dir="/tmp/stable_audio"):
+def get_weavemuse_agents_and_tools(model=None, device_map="auto", notagen_output_dir="/tmp/notagen_output", stable_audio_output_dir="/tmp/stable_audio", tool_mode="hybrid"):
     """
     Returns all WeaveMuse agents and tools as a list for easy access and management.
 
@@ -88,15 +92,21 @@ def get_weavemuse_agents_as_tools(model=None, device_map="auto", notagen_output_
         warnings.warn("No model specified, using default InferenceClientModel.")
         model = InferenceClientModel()
         
-    chat_musician_tool = ChatMusicianTool(device=device_map)
+    chat_musician_tool = ChatMusicianTool(device=device_map)    
     symbolic_music_agent = create_symbolic_music_agent(model, device_map=device_map, output_dir=notagen_output_dir)
-    audio_analysis_agent = create_audio_analysis_agent(model, device_map=device_map)
+    audio_analysis_agent = create_audio_analysis_agent(model, device_map=device_map, remote_only=(tool_mode=="remote"))
     audio_generation_agent = create_audio_generation_agent(model, device_map=device_map, output_dir=stable_audio_output_dir)
-    web_agent = create_web_agent(model)        
-    return [
-        chat_musician_tool,
-        symbolic_music_agent,
-        audio_analysis_agent,
-        audio_generation_agent,
-        web_agent
-    ]
+    web_agent = create_web_agent(model)
+    if tool_mode == "remote":
+        # In remote mode, only use the chat musician tool and web agent
+        return [
+            create_audio_analysis_agent(model, device_map=device_map),
+            web_agent
+        ], []
+    else:
+        return [            
+            symbolic_music_agent,
+            audio_analysis_agent,
+            audio_generation_agent,
+            web_agent
+        ], [chat_musician_tool]

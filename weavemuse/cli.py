@@ -14,18 +14,9 @@ def run_interface() -> None:
         print("Initializing WeaveMuse...")
         print("This may take a few minutes on first run as models are loaded...")
         
-        # Get the project root directory
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        app_path = os.path.join(project_root, "app.py")
-        
-        if os.path.exists(app_path):
-            # Execute the app.py file
-            exec(open(app_path).read())
-        else:
-            # Fallback: try to import and run a simpler version
-            from weavemuse.agents.music_agent import MusicAgent
-            agent = MusicAgent()
-            agent.launch_gradio()
+        from weavemuse.interfaces.gui import WeaveMuseGUI 
+        demo = WeaveMuseGUI().launch_interface(share=False)   
+        return demo
         
     except ImportError as e:
         print(f"Error importing required modules: {e}")
