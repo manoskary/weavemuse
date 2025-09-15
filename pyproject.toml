@@ -8,47 +8,65 @@ version = "0.1.0"
 description = "A comprehensive music agent framework using smolagents for generation and understanding"
 authors = [{name = "Emmanouil Karystinaios", email = "manoskaristineos@gmail.com"}]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.13"
 license = "MIT"
 keywords = ["music", "ai", "agent", "generation", "understanding", "smolagents"]
 
 dependencies = [
-    "smolagents>=1.20.0",
+    # Core framework and agents
+    "smolagents[tools]>=1.20.0",
+    
+    # Web interface and client
     "gradio>=4.0.0",
-    "gradio_pdf",
+    "gradio_pdf>=0.0.22",
+    "gradio_client>=0.19.3",
+    
+    # Deep learning frameworks
     "torch>=2.0.0",
     "torchaudio>=2.0.0",
     "transformers>=4.35.0",
-    "mcpadapt>=0.1.13",
-    "jsonref>=1.1.0",
     "diffusers>=0.25.0",
-    "stable-audio-tools>=0.0.19",
+    "accelerate>=0.21.0",
+    "bitsandbytes>=0.46.1",
+    
+    # Music notation and symbolic music
     "symusic>=0.4.0",
     "music21>=9.1.0",
+    "abctoolkit>=0.0.6",
+    "mcpadapt>=0.1.13",
+    "samplings>=0.1.7",
+    "pyparsing>=3.2.1",
+    
+    # Audio processing and generation
     "librosa>=0.10.0",
     "soundfile>=0.12.0",
-    "numpy>=1.24.0",
+    
+    # Scientific computing
+    "numpy>=1.23.5,<2.0.0",
     "pandas>=2.0.0",
+    "scipy>=1.11.0",
+    "matplotlib>=3.7.0",
+    "einops>=0.6.0",
+    
+    # Web and utilities
     "requests>=2.31.0",
     "fastapi>=0.100.0",
     "uvicorn>=0.23.0",
     "pydantic>=2.0.0",
-    "huggingface-hub>=0.17.0",
-    "accelerate>=0.21.0",
-    "einops>=0.6.0",
-    "scipy>=1.11.0",
-    "matplotlib>=3.7.0",
-    "pillow>=10.0.0",
     "aiofiles>=23.0.0",
-    "bitsandbytes>=0.46.1",
-    "abctoolkit>=0.0.6",
-    "samplings>=0.1.7",
-    "pyparsing>=3.2.1",
-    "PyMuPDF",
-    "zero",
+    "markdownify>=1.1.0,<=1.2.0",
+    
+    # HuggingFace and model utilities
+    "huggingface-hub>=0.17.0",
+    "jsonref>=1.1.0",
+    
+    # Image and PDF processing
+    "pillow>=10.0.0",
+    "PyMuPDF>=1.23.0",
 ]
 
 [project.optional-dependencies]
+# Development dependencies
 dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
@@ -56,6 +74,43 @@ dev = [
     "isort>=5.12.0",
     "flake8>=6.0.0",
     "mypy>=1.5.0",
+    "uv>=0.8.0",
+]
+
+# GPU optimized packages for CUDA acceleration
+gpu = [
+    "xformers>=0.0.22",  # Memory efficient attention
+]
+
+# Remote API dependencies for cloud inference
+remote = [
+    "openai>=1.0.0",
+    "anthropic>=0.7.0",
+    "google-generativeai>=0.3.0",
+]
+
+# Complete audio dependencies with additional codecs
+audio = [
+    "stable-audio-tools>=0.0.19",
+    "ffmpeg-python>=0.2.0",
+    "pydub>=0.25.0",
+    "aubio>=0.4.9",
+]
+
+# Extended music analysis tools
+music = [
+    "pretty_midi>=0.2.10",
+    "mido>=1.3.0",
+    "fluidsynth>=0.2.0",
+    "pyfluidsynth>=1.3.0",
+]
+
+# All dependencies combined
+all = [
+    "weavemuse[gpu]",
+    "weavemuse[remote]", 
+    "weavemuse[audio]",
+    "weavemuse[music]",
 ]
 
 [project.urls]
