@@ -33,6 +33,15 @@ A comprehensive music agent framework built on smolagents, integrating state-of-
 - **Flexible Local Ready**: Scalable deployment options based on system capacity.
 - **Remote Deployment**: Partially remote deployment through HF Inference Clients.
 
+## Interface Preview
+
+WeaveMuse provides an intuitive web interface for seamless music AI interaction:
+
+<div align="center">
+   <img src="./static/weavemuse_interface.png" alt="WeaveMuse Interface" width="800" style="border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+   <p><em>WeaveMuse's clean and intuitive web interface for music generation and analysis</em></p>
+</div>
+
 ## Quick Start
 
 ### Prerequisites
@@ -387,7 +396,6 @@ weavemuse terminal
 weavemuse gui  
 # User: "Research Beethoven's late string quartets and compose something inspired by Op. 131"
 # System: Uses WebSearchTool → ChatMusicianTool → NotaGenTool → Returns research + composition
-```
 ```
 
 #### Troubleshooting
