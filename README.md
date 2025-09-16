@@ -145,17 +145,7 @@ export HF_TOKEN="your_huggingface_token_here"
 
 #### 3. Using Remote Inference (Optional)
 
-For lightweight usage without local GPU requirements, you can use HuggingFace's Inference API:
-
-```python
-from weavemuse.agents.models import InferenceClientModel
-
-# Use remote inference instead of local models
-model = InferenceClientModel(
-    model_id="m-a-p/ChatMusician",
-    token="your_hf_token"  # Optional if already logged in
-)
-```
+For lightweight usage without local GPU requirements, you can use HuggingFace's Inference API. Please provide your HF token to use it.
 
 #### 4. Create Environment File
 
@@ -164,7 +154,7 @@ model = InferenceClientModel(
 cp .env.example .env
 ```
 
-Edit `.env` with your configuration:
+Edit `.env` with your configuration (optional):
 
 ```env
 # HuggingFace Configuration
@@ -191,36 +181,12 @@ OPENAI_API_KEY=your_openai_key
 ANTHROPIC_API_KEY=your_anthropic_key
 ```
 
-### Installation Extras
-
-WeaveMuse provides several optional dependency groups:
-
-- `gpu`: CUDA-optimized packages for GPU acceleration
-- `remote`: Remote API dependencies (OpenAI, Anthropic, etc.)
-- `audio`: Extended audio processing capabilities
-- `music`: Advanced music analysis tools
-- `dev`: Development dependencies
-- `all`: All optional dependencies combined
-
-```bash
-# Install specific extras with uv
-uv sync --extra gpu --extra remote --extra-index-url https://download.pytorch.org/whl/cu121
-
-# Or with pip
-pip install -e ".[gpu,remote]" --extra-index-url https://download.pytorch.org/whl/cu121
-```
 
 ### Verify Installation
 
 After installation, verify everything is working:
 
 ```bash
-# Test basic functionality
-python -c "from weavemuse.tools import NotaGenTool; print('✅ WeaveMuse imported successfully')"
-
-# Run tests
-pytest tests/ -v
-
 # Check GPU availability
 python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
 
@@ -255,13 +221,12 @@ weavemuse --version
 - File upload capabilities for audio analysis
 - Interactive chat with music agents
 - Visual display of generated scores and audio playback
-- Accessible at `http://localhost:7860`
+- Accessible (usually) at `http://localhost:7860`
 
 #### 2. **Terminal Interface** - `weavemuse terminal`  
 - Command-line interaction for advanced users
 - Fast startup with on-demand loading
 - Direct text-based communication with agents
-- Ideal for scripting and automation
 
 ### Model Configuration
 
@@ -284,6 +249,7 @@ WeaveMuse operates as a **multi-agent system** with specialized agents for diffe
 - **Purpose**: Orchestrates all music-related tasks
 - **Capabilities**: Task routing, file handling, workflow management
 - **Tools**: Base smolagents tools + specialized music agents
+- **Think-act-repair**: The Manager agent follows Think-act-repair protocol.
 - **Intelligence**: Driven by the backbone model (local or remote)
 
 #### 🎼 **Specialized Music Agents**
@@ -313,6 +279,8 @@ WeaveMuse operates as a **multi-agent system** with specialized agents for diffe
 
 #### 🛠 **Individual Tools Available**
 
+WeaveMuse local tools support Lazy loading and GPU offloading, to prevent overheads and long waiting times when tools are not used.
+
 **ChatMusicianTool**
 - Natural language music analysis and understanding
 - Music theory explanations and composition guidance
@@ -325,7 +293,7 @@ WeaveMuse operates as a **multi-agent system** with specialized agents for diffe
 
 **StableAudioTool**
 - Text-to-audio generation using Stable Audio Open
-- High-quality stereo audio synthesis
+- Good-quality stereo audio synthesis
 - Conditional generation based on prompts
 
 **AudioFlamingoTool**
@@ -355,25 +323,6 @@ The **backbone language model** is the core intelligence driving all WeaveMuse a
 - **Remote Models**: Good balance of intelligence and resource usage
 - **Smaller Models**: Limited reasoning but faster and lower resource requirements
 
-#### 🚀 **Resource Requirements by Configuration**
-
-**Configuration 1: Only Local Models**
-- **VRAM**: 16GB+ recommended, 8GB minimum
-- **Intelligence**: Highest (full local model reasoning)
-- **Startup**: Slower (model loading time)
-- **Privacy**: Complete (no external API calls)
-
-**Configuration 2: HuggingFace Cloud Agent + Local Tools**  
-- **VRAM**: 4-8GB for specialized tools
-- **Intelligence**: High (cloud model reasoning)
-- **Startup**: Medium (partial local loading)
-- **Privacy**: Hybrid (reasoning remote, some tools local)
-
-**Configuration 3: All Remote**
-- **VRAM**: <1GB (minimal local processing)
-- **Intelligence**: High (cloud model reasoning) 
-- **Startup**: Fastest (no model loading)
-- **Privacy**: Limited (all processing remote)
 
 ### Example Usage Scenarios
 
@@ -424,7 +373,7 @@ export HF_TOKEN="your_token_here"
 ```bash
 # Reset and reinstall
 rm -rf .venv uv.lock
-uv sync --extra-index-url https://download.pytorch.org/whl/cu121
+uv sync --extra-index-url https://download.pytorch.org/whl/cu121 --index-strategy unsafe-best-match
 ```
 
 **Audio Generation Issues:**
@@ -433,42 +382,6 @@ uv sync --extra-index-url https://download.pytorch.org/whl/cu121
 uv sync --extra audio --extra-index-url https://download.pytorch.org/whl/cu121
 ```
 
-## Development
-
-### Setting up Development Environment
-
-```bash
-# Install development dependencies
-uv sync --extra dev --extra-index-url https://download.pytorch.org/whl/cu121
-
-# Run tests
-pytest tests/ -v
-
-# Format code
-black weavemuse/ tests/
-isort weavemuse/ tests/
-
-# Type checking
-mypy weavemuse/
-```
-
-### Project Structure
-
-```
-weavemuse/
-├── weavemuse/                # Main package
-│   ├── agents/               # Agent implementations and models  
-│   ├── tools/                # Music tool implementations
-│   ├── interfaces/           # UI and CLI interfaces
-│   ├── utils/                # Utility functions and GPU detection
-│   └── __init__.py           # Package initialization
-├── tests/                    # Test suite
-├── static/                   # Static assets (logos, icons)
-├── models/                   # Downloaded model files (auto-created)
-├── requirements.txt          # Pip requirements
-├── pyproject.toml           # Project configuration and dependencies
-└── README.md                # This file
-```
 
 ## Integration and Extension
 
@@ -495,25 +408,6 @@ class CustomMusicTool(ManagedTransformersTool):
         pass
 ```
 
-### API Integration
-
-For programmatic access, use the agents directly:
-
-```python
-from weavemuse.agents.agents_as_tools import get_weavemuse_agents_and_tools
-from smolagents import InferenceClientModel
-
-model = InferenceClientModel()
-agents, tools = get_weavemuse_agents_and_tools(
-    model=model,
-    device_map="auto",
-    tool_mode="hybrid"
-)
-
-# Use specific agents
-symbolic_agent = agents[0]  # Symbolic music agent
-result = symbolic_agent.run("Compose a waltz in 3/4 time")
-```
 
 ## Models and Tools
 
@@ -555,20 +449,36 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Acknowledgments
 
 - [smolagents](https://github.com/huggingface/smolagents) - Agent framework
-- [ChatMusician](https://github.com/hf-lin/ChatMusician) - Music understanding
+- [ChatMusician](https://github.com/hf-lin/ChatMusician) - Music understanding symbolic 
 - [NotaGen](https://github.com/ElectricAlexis/NotaGen) - Symbolic music generation
 - [Stable Audio](https://github.com/Stability-AI/stable-audio-tools) - Audio generation
-- [Verovio](https://www.verovio.org/) - Music notation rendering
+- [Audio Flamingo](https://audioflamingo.github.io/) - Music Understanding on Audio by NVIDIA
+- [Qwen-Audio](https://qwen-audio.github.io/Qwen-Audio/) - Music Understanding on Audio by QWEN
 
 ## Citation
 
 If you use this framework in your research, please cite:
 
 ```bibtex
-@software{music_agent_framework,
-  title={Music Agent Framework: Comprehensive Music AI with smolagents},
-  author={Music Agent Team},
+@article{music_agent_framework,
+  title={WeaveMuse: An Open Agentic System for Multimodal Music Understanding and Generation},
+  author={Karystinaios, Emmanouil},
   year={2025},
-  url={https://github.com/music-agent/music-agent}
+  article={1st Workshop on Large Language Models for Music and Audio (LLM4MA)}
 }
 ```
+
+## TODO
+
+### Upcoming Features and Improvements
+
+- [ ] **Integrate Spotify MCP for song playback and id** - Add Spotify Model Context Protocol integration for enhanced music discovery, playback capabilities, and song identification features
+- [ ] **Dreambooth stable-audio-open on music for better outputs** - Fine-tune Stable Audio Open with DreamBooth on music datasets to improve generation quality and musical coherence
+- [ ] **Improve control on NotaGen** - Enhance NotaGen tool with better parameter control, style conditioning, and compositional constraints for more precise music generation
+- [ ] **Integrate Neural Codec fun tool** - Add neural audio codec tools for advanced audio compression, reconstruction, and manipulation capabilities
+- [ ] **Integrate Engraving Model** - Add EngravingGNN as a pipeline after NotaGen ouput to improve the layout of the generated MusicXML and PDF scores.
+- [ ] **Integrate more tools and MCPs** - Expand the toolkit with additional Model Context Protocols and specialized music AI tools for broader functionality
+
+### Roadmap
+
+These improvements aim to enhance WeaveMuse's capabilities in music discovery, generation quality, user control, and ecosystem integration. Contributions and suggestions for these features are welcome!
