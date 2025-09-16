@@ -1,5 +1,11 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0", # Web and utilities
+    "requests>=2.28.1",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "pydantic>=2.0.0",
+    "aiofiles>=23.0.0",
+    "markdownify>=1.1.0"] 
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,12 +15,13 @@ description = "A comprehensive music agent framework using smolagents for genera
 authors = [{name = "Emmanouil Karystinaios", email = "manoskaristineos@gmail.com"}]
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
-license = "MIT"
+license = {text = "MIT"}
 keywords = ["music", "ai", "agent", "generation", "understanding", "smolagents"]
 
 dependencies = [
     # Core framework and agents
-    "smolagents[tools]>=1.20.0",
+        # AI agents and tools
+    "smolagents>=1.20.0",
     
     # Web interface and client
     "gradio>=4.0.0",
@@ -42,14 +49,13 @@ dependencies = [
     "soundfile>=0.12.0",
     
     # Scientific computing
-    "numpy>=1.23.5,<2.0.0",
+    "numpy>=1.24.0,<2.0.0",
     "pandas>=2.0.0",
     "scipy>=1.11.0",
     "matplotlib>=3.7.0",
     "einops>=0.6.0",
     
-    # Web and utilities
-    "requests>=2.31.0",
+    # Web and utilities    
     "fastapi>=0.100.0",
     "uvicorn>=0.23.0",
     "pydantic>=2.0.0",
@@ -91,10 +97,10 @@ remote = [
 
 # Complete audio dependencies with additional codecs
 audio = [
-    "stable-audio-tools>=0.0.19",
     "ffmpeg-python>=0.2.0",
     "pydub>=0.25.0",
     "aubio>=0.4.9",
+    "soundfile>=0.12.0",
 ]
 
 # Extended music analysis tools
