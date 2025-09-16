@@ -10,20 +10,18 @@ from typing import Optional, Dict, Any, Union
 from pathlib import Path
 from smolagents.tools import Tool  # type: ignore
 import torch
-import torchaudio
+import soundfile as sf
 
 
 try:    
-    from stable_audio_tools import get_pretrained_model
-    from stable_audio_tools.inference.generation import generate_diffusion_cond
+    from diffusers.pipelines.stable_audio.pipeline_stable_audio import StableAudioPipeline
     STABLE_AUDIO_AVAILABLE = True
     print("✅ Stable Audio dependencies loaded successfully!")
 except ImportError as e:
     STABLE_AUDIO_AVAILABLE = False
     import_error = str(e)
     print(f"❌ Stable Audio dependencies failed: {e}")    
-    get_pretrained_model = None
-    generate_diffusion_cond = None
+    StableAudioPipeline = None
 
 from .base_tools import ManagedDiffusersTool
 
@@ -32,15 +30,15 @@ logger = logging.getLogger(__name__)
 
 class StableAudioTool(ManagedDiffusersTool):
     """
-    Tool for high-quality audio generation using Stable Audio.
+    Tool for high-quality audio generation using Stable Audio via diffusers.
     
     This tool can:
     - Generate high-quality audio from text descriptions
     - Create music in various styles and genres
     - Produce sound effects and ambient audio
-    - Generate audio of specific lengths
+    - Generate audio of specific lengths (up to 47 seconds)
     
-    Now with lazy loading and VRAM management!
+    Uses the diffusers StableAudioPipeline for efficient inference with VRAM management.
     """
     
     # Class attributes required by smolagents
@@ -63,12 +61,12 @@ class StableAudioTool(ManagedDiffusersTool):
         },
         "steps": {
             "type": "string",
-            "description": "Number of diffusion steps (default: 100, recommended: 50-200)",
+            "description": "Number of inference steps (default: 100, recommended: 50-200)",
             "nullable": True
         },
         "cfg_scale": {
             "type": "string",
-            "description": "Classifier-free guidance scale (default: 7.0, range: 1.0-15.0)",
+            "description": "Guidance scale (default: 7.0, range: 1.0-15.0)",
             "nullable": True
         }
     }
@@ -107,37 +105,40 @@ class StableAudioTool(ManagedDiffusersTool):
     
     def _load_model(self) -> Dict[str, Any]:
         """
-        Load the Stable Audio model and conditioning.
+        Load the Stable Audio model using diffusers pipeline.
         
         Returns:
-            Dictionary containing model, sample_rate, and sample_size
+            Dictionary containing pipeline and config
         """
         if not STABLE_AUDIO_AVAILABLE:
             raise ImportError(f"Stable Audio dependencies not available: {import_error}")
             
         logger.info(f"Loading Stable Audio model: {self.model_id}")
         
-        # Load model
-        if get_pretrained_model is None:
-            raise ImportError("get_pretrained_model not available")
-            
-        model, model_config = get_pretrained_model(self.model_id)
+        # Load pipeline
+        if StableAudioPipeline is None:
+            raise ImportError("StableAudioPipeline not available")
+        
+        # Determine torch_dtype    
+        torch_dtype = torch.float16 if self.device == "cuda" else torch.float32
+        
+        pipeline = StableAudioPipeline.from_pretrained(
+            self.model_id, 
+            torch_dtype=torch_dtype
+        )
         
         # Move to device
-        model = model.to(self.device)
+        pipeline = pipeline.to(self.device)
         
-        # Extract sample rate and size from config
-        sample_rate = model_config.get("sample_rate", 44100)
-        sample_size = model_config.get("sample_size", sample_rate * 47)  # Max 47 seconds
+        # Get sampling rate from VAE
+        sample_rate = pipeline.vae.sampling_rate
         
-        logger.info(f"Stable Audio model loaded successfully on {self.device}")
-        logger.info(f"Sample rate: {sample_rate} Hz, Max duration: {sample_size / sample_rate:.1f}s")
+        logger.info(f"Stable Audio pipeline loaded successfully on {self.device}")
+        logger.info(f"Sample rate: {sample_rate} Hz")
         
         return {
-            "model": model,
-            "model_config": model_config,
-            "sample_rate": sample_rate,
-            "sample_size": sample_size
+            "pipeline": pipeline,
+            "sample_rate": sample_rate
         }
     
     def _call_model(
@@ -146,7 +147,7 @@ class StableAudioTool(ManagedDiffusersTool):
         **kwargs
     ) -> str:
         """
-        Generate audio using Stable Audio model.
+        Generate audio using Stable Audio pipeline.
         
         Args:
             model: Dictionary containing loaded components
@@ -157,10 +158,8 @@ class StableAudioTool(ManagedDiffusersTool):
         """
         try:
             # Extract components
-            audio_model = model["model"]
-            model_config = model["model_config"]
+            pipeline = model["pipeline"]
             sample_rate = model["sample_rate"]
-            sample_size = model["sample_size"]
             
             # Extract parameters from kwargs
             prompt = kwargs.get("prompt", "")
@@ -169,49 +168,45 @@ class StableAudioTool(ManagedDiffusersTool):
             cfg_scale = float(kwargs.get("cfg_scale", "7.0"))
             
             # Validate parameters
-            max_duration = sample_size / sample_rate
+            max_duration = 47.0  # Stable Audio Open max duration
             duration = min(duration, max_duration)
             steps = max(10, min(steps, 1000))
             cfg_scale = max(1.0, min(cfg_scale, 15.0))
+            negative_prompt = "Low quality."
             
             logger.info(f"Generating audio: '{prompt}' ({duration}s, {steps} steps, CFG: {cfg_scale})")
             
-            # Setup conditioning
-            conditioning = [{
-                "prompt": prompt,
-                "seconds_start": 0,
-                "seconds_total": duration
-            }]
+            # Set up generator for reproducible results
+            generator = torch.Generator(self.device).manual_seed(42)
             
-            # Generate audio using the model's generate method
-            audio_model.eval()
+            # Generate audio using the diffusers pipeline
             with torch.no_grad():
-                print(f"Debug: About to call model.generate with:")
-                print(f"  model: {type(audio_model)}")
-                print(f"  steps: {steps}")
-                print(f"  cfg_scale: {cfg_scale}")
-                print(f"  conditioning: {conditioning}")
-                print(f"  sample_size: {int(duration * sample_rate)}")
+                print(f"Debug: About to call pipeline with:")
+                print(f"  prompt: {prompt}")
+                print(f"  num_inference_steps: {steps}")
+                print(f"  guidance_scale: {cfg_scale}")
+                print(f"  audio_end_in_s: {duration}")
                 print(f"  device: {self.device}")
                 
                 try:
-                    # Use the model's generate method instead of calling generate_diffusion_cond directly
-                    output = audio_model.generate(
-                        conditioning=conditioning,
-                        sample_size=int(duration * sample_rate),
-                        steps=steps,
-                        cfg_scale=cfg_scale,
-                        device=self.device
+                    # Use the diffusers pipeline
+                    result = pipeline(
+                        prompt=prompt,
+                        num_inference_steps=steps,
+                        guidance_scale=cfg_scale,                                
+                        audio_end_in_s=duration,
+                        negative_prompt=negative_prompt,
+                        num_waveforms_per_prompt=1,
+                        generator=generator,
                     )
                     
-                    print(f"Debug: model.generate returned: {type(output)}")
-                    if hasattr(output, 'shape'):
-                        print(f"  shape: {output.shape}")
-                    else:
-                        print(f"  content (first 200 chars): {str(output)[:200]}")
+                    # Extract audio from result
+                    audio = result.audios[0]  # Get first (and only) waveform
+                    
+                    print(f"Debug: pipeline returned audio with shape: {audio.shape}")
                         
                 except Exception as e:
-                    print(f"Debug: Exception in model.generate: {e}")
+                    print(f"Debug: Exception in pipeline: {e}")
                     print(f"Debug: Exception type: {type(e)}")
                     import traceback
                     traceback.print_exc()
@@ -219,23 +214,16 @@ class StableAudioTool(ManagedDiffusersTool):
             
             # Save audio to output_dir
             self.output_dir.mkdir(parents=True, exist_ok=True)
-            # give the audio a timestamped filename            
+            # Give the audio a timestamped filename            
             timestamp = int(time.time())
             output_filename = f"stable_audio_{timestamp}.wav"
             temp_path = self.output_dir / output_filename
-
-            if torchaudio is None:
-                raise ImportError("torchaudio not available")
                 
-            # Ensure output is in correct format
-            if output.dim() == 1:
-                output = output.unsqueeze(0)  # Add channel dimension if mono
-            elif output.dim() == 3:
-                output = output.squeeze(0)  # Remove batch dimension if present
-                
-            # Normalize and save
-            output = output.clamp(-1, 1)  # Ensure values are in valid range
-            torchaudio.save(temp_path, output.cpu(), sample_rate)
+            # Convert to numpy format for soundfile
+            output = audio.T.float().cpu().numpy()
+            
+            # Save using soundfile
+            sf.write(str(temp_path), output, sample_rate)
             
             logger.info(f"Audio generated successfully: {temp_path}")
             return str(temp_path)
@@ -246,21 +234,17 @@ class StableAudioTool(ManagedDiffusersTool):
     
     def _unload_model(self, model: Dict[str, Any]) -> None:
         """
-        Unload the Stable Audio model components.
+        Unload the Stable Audio pipeline components.
         
         Args:
             model: Dictionary containing model components
         """
         try:
-            # Clean up model
-            if "model" in model:
-                audio_model = model["model"]
-                del model["model"]
-                del audio_model
-            
-            # Clean up config
-            if "model_config" in model:
-                del model["model_config"]
+            # Clean up pipeline
+            if "pipeline" in model:
+                pipeline = model["pipeline"]
+                del model["pipeline"]
+                del pipeline
             
             # Force cleanup
             import gc

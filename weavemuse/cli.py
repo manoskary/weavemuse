@@ -17,7 +17,7 @@ def run_interface() -> None:
         from weavemuse.interfaces.gui import WeaveMuseGUI 
         demo = WeaveMuseGUI().launch_interface(share=False)   
         return demo
-        
+            
     except ImportError as e:
         print(f"Error importing required modules: {e}")
         print("Please ensure all dependencies are properly installed.")

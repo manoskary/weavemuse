@@ -15,7 +15,6 @@ class WeaveMuseGUI:
         self.vram_manager = None
         self.tools_initialized = False
         self.model_choice = None        
-        print("⚡ WeaveMuse Terminal Interface - Fast Start Mode")
     
     def ask_model_choice(self) -> str:
         """Ask user to choose between local or HuggingFace model."""
