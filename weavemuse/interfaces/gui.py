@@ -69,8 +69,10 @@ class WeaveMuseGUI:
             description=(
                 "Manages music-related tasks, including web searches, advanced music analysis, "
                 "symbolic music generation, audio music generation, and audio analysis using Audio Flamingo. "
-                "When users upload audio files for analysis, forward the EXACT file path to the "
+                "When users upload audio files for analysis, forward the EXACT file path to the "                
                 "audio_flamingo_agent without checking if files exist first. "
+                "If user asks to generate/compose music evaluate if symbolic (NotaGen) or audio (Stable Audio) is more appropriate."
+                "Use directly the corresponding tool. "
                 "If a task is not related to music, ask the user to provide a music-related query."
             ),
             add_base_tools=True,

@@ -61,7 +61,7 @@ class StableAudioTool(ManagedDiffusersTool):
         },
         "steps": {
             "type": "string",
-            "description": "Number of inference steps (default: 100, recommended: 50-200)",
+            "description": "Number of inference steps (default: 50, recommended: 20-50)",
             "nullable": True
         },
         "cfg_scale": {
@@ -170,7 +170,7 @@ class StableAudioTool(ManagedDiffusersTool):
             # Validate parameters
             max_duration = 47.0  # Stable Audio Open max duration
             duration = min(duration, max_duration)
-            steps = max(10, min(steps, 1000))
+            steps = max(10, min(steps, 50))
             cfg_scale = max(1.0, min(cfg_scale, 15.0))
             negative_prompt = "Low quality."
             

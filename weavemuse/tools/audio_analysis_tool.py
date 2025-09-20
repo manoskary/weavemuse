@@ -187,6 +187,12 @@ class AudioAnalysisTool(ManagedTransformersTool):
                     sr=processor.feature_extractor.sampling_rate
                 )
             
+            # if audio is loaded keep only 30 seconds for analysis to save memory
+            max_duration = 30  # seconds
+            if len(audio) > sr * max_duration:
+                audio = audio[:sr * max_duration]
+                logger.info(f"Audio truncated to {max_duration} seconds for analysis")
+            
             return audio
             
         except Exception as e:
@@ -197,17 +203,20 @@ class AudioAnalysisTool(ManagedTransformersTool):
         """Generate response using Qwen2-Audio model."""
         try:
             # Prepare inputs
-            inputs = processor(text=prompt, audios=audio_data, return_tensors="pt")
-            
+            inputs = processor(text=prompt, audio=audio_data, return_tensors="pt")
+            max_length = 512 # Default max length
             # Move inputs to device if using CUDA
             if self.device == "cuda":
                 inputs = {k: v.to(self.device) if hasattr(v, 'to') else v for k, v in inputs.items()}
+                # ensure input_ids are of the correct max length
+                if inputs['input_ids'].size(1) > max_length:
+                    inputs['input_ids'] = inputs['input_ids'][:, -max_length:]
             
             # Generate response
             with torch.no_grad():
                 generated_ids = model.generate(
                     **inputs, 
-                    max_length=512,
+                    max_length=max_length,
                     do_sample=True,
                     temperature=0.7,
                     top_p=0.9

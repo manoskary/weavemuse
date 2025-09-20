@@ -426,6 +426,14 @@ class WeaveMuseInterface(gr.Blocks):
                 return pdf_info, audio_path, download_files_list
 
         if pdf_path:
+            # if we have a pdf then we check that it was generated recently
+            # i.e. created in the last 10 minutes
+            file_time = datetime.fromtimestamp(os.path.getctime(pdf_path))
+            if file_time < datetime.now() - timedelta(minutes=10):
+                logger.debug(f"PDF file {pdf_path} is too old ({file_time}), ignoring.")
+                pdf_path = None
+        
+        if pdf_path:
             # Look for associated PNG images (NotaGen creates these)
             base_name = os.path.splitext(pdf_path)[0]
             png_images = glob.glob(f"{base_name}_page_*.png")
@@ -746,6 +754,8 @@ class WeaveMuseInterface(gr.Blocks):
         pdf_state = gr.State({})  # For PDF page navigation
         session_generated_files = gr.State([])  # Track all generated files in session
         current_audio_path = gr.State(None)  # Keep track of current audio
+        pdf_viewer_visible = gr.State(False)  # Track PDF viewer visibility
+        current_pdf_path = gr.State(None)  # Track current PDF path
         
         with gr.Row():
             # Main chat area
@@ -897,8 +907,8 @@ class WeaveMuseInterface(gr.Blocks):
                     examples = [
                         "Compose a peaceful piano piece in the style of Chopin",
                         "Analyze the harmony in my uploaded audio",
-                        "Generate a slow blues guitar solo",
-                        "Explain modal harmony",
+                        "Generate upbeat elevator music",
+                        "Explain what musical scales are and how they work",
                         # "Generate ambient music for relaxation",                        
                     ]
                     
@@ -955,7 +965,7 @@ class WeaveMuseInterface(gr.Blocks):
                             label="Generated Sheet Music",
                             height=400,
                             visible=True,
-                            interactive=False
+                            interactive=True
                         )
                     else:
                         # Fallback to regular File component if gradio_pdf not available
@@ -1021,7 +1031,7 @@ class WeaveMuseInterface(gr.Blocks):
             )
 
         # Enhanced agent interaction with audio and PDF handling
-        def interact_with_agent_enhanced(prompt, messages, session_state, audio_files, session_files, current_audio, interrupt_flag=None):
+        def interact_with_agent_enhanced(prompt, messages, session_state, audio_files, session_files, current_audio, pdf_visible, current_pdf, interrupt_flag=None):
             import gradio as gr
             import time
             
@@ -1043,7 +1053,7 @@ class WeaveMuseInterface(gr.Blocks):
 
             # Initialize variables
             notagen_audio_found = False  # Track if we found NotaGen audio
-            latest_audio_path = current_audio  # Keep track of current audio
+            latest_audio_path = current_audio  # Keep track of current audio               
 
             try:
                 messages.append(gr.ChatMessage(role="user", content=prompt, metadata={"status": "done"}))
@@ -1052,13 +1062,15 @@ class WeaveMuseInterface(gr.Blocks):
                        gr.Audio(value=current_audio, visible=bool(current_audio)), 
                        gr.Row(visible=bool(current_audio)), 
                        gr.Files(value=session_files, visible=True), 
-                       gr.Group(visible=False), 
-                       gr.File(visible=False), 
+                       gr.Group(visible=pdf_visible),  # Maintain PDF viewer visibility
+                       gr.File(value=current_pdf, visible=bool(current_pdf)), 
                        gr.Row(visible=True),  # Show processing indicator
                        gr.Button(visible=False),  # Hide submit button
                        gr.Button(visible=True),   # Show interrupt button
                        session_files,  # Return session files to maintain state
-                       current_audio)  # Return current audio to maintain state
+                       current_audio,  # Return current audio to maintain state
+                       pdf_visible,  # Return PDF visibility state
+                       current_pdf)  # Return current PDF path
                 
                 for msg in stream_to_gradio(
                     session_state["agent"], task=prompt, reset_agent_memory=self.reset_agent_memory
@@ -1075,13 +1087,15 @@ class WeaveMuseInterface(gr.Blocks):
                                gr.Audio(value=latest_audio_path, visible=bool(latest_audio_path)), 
                                gr.Row(visible=bool(latest_audio_path)),
                                gr.Files(value=session_files, visible=True),
-                               gr.Group(visible=False),
-                               gr.File(visible=False),
+                               gr.Group(visible=pdf_visible),  # Maintain PDF viewer visibility
+                               gr.File(value=current_pdf, visible=bool(current_pdf)),
                                gr.Row(visible=False),  # Hide processing indicator
-                               gr.Button(visible=True),  # Show submit button
-                               gr.Button(visible=False),  # Hide interrupt button
+                               gr.Button(visible=True, interactive=True),  # Show submit button
+                               gr.Button(visible=False, interactive=False),  # Hide interrupt button
                                session_files,  # Return session files to maintain state
-                               latest_audio_path)  # Return current audio to maintain state
+                               latest_audio_path,  # Return current audio to maintain state
+                               pdf_visible,  # Return PDF visibility state
+                               current_pdf)  # Return current PDF path
                         return
                     
                     if isinstance(msg, gr.ChatMessage):
@@ -1134,19 +1148,24 @@ class WeaveMuseInterface(gr.Blocks):
                                 if pdf_files:
                                     pdf_file_path = pdf_files[0]  # Use the first PDF file
                                     logger.debug(f"PDF file for viewer: {pdf_file_path}")
+                                    # Update PDF state when PDF is found
+                                    pdf_visible = True
+                                    current_pdf = pdf_file_path
                             
                             # Prioritize NotaGen audio over generic generated audio
                             yield (messages, 
                                    gr.Audio(value=latest_audio_path, visible=bool(latest_audio_path)), 
                                    gr.Row(visible=bool(latest_audio_path)),
                                    gr.Files(value=session_files, visible=True),
-                                   gr.Group(visible=bool(pdf_file_path)),
-                                   gr.File(value=pdf_file_path, visible=bool(pdf_file_path)),
+                                   gr.Group(visible=pdf_visible), # Show PDF viewer if PDF exists
+                                   gr.File(value=current_pdf, visible=bool(current_pdf)),
                                    gr.Row(visible=True),  # Keep processing indicator visible
                                    gr.Button(visible=False),  # Hide submit button
                                    gr.Button(visible=True),   # Show interrupt button
                                    session_files,  # Return session files to maintain state
-                                   latest_audio_path)  # Return current audio to maintain state
+                                   latest_audio_path,  # Return current audio to maintain state
+                                   pdf_visible,  # Return PDF visibility state
+                                   current_pdf)  # Return current PDF path
                         else:
                             # Check for regular audio content
                             audio_path, show_actions = self._extract_audio_from_message(msg)
@@ -1158,25 +1177,29 @@ class WeaveMuseInterface(gr.Blocks):
                                        gr.Audio(value=latest_audio_path, visible=True), 
                                        gr.Row(visible=show_actions),
                                        gr.Files(value=session_files, visible=True),
-                                       gr.Group(visible=False),
-                                       gr.File(visible=False),
+                                       gr.Group(visible=pdf_visible),  # Maintain PDF viewer visibility
+                                       gr.File(value=current_pdf, visible=bool(current_pdf)),
                                        gr.Row(visible=True),  # Keep processing indicator visible
                                        gr.Button(visible=False),  # Hide submit button
                                        gr.Button(visible=True),   # Show interrupt button
                                        session_files,  # Return session files to maintain state
-                                       latest_audio_path)  # Return current audio to maintain state
+                                       latest_audio_path,  # Return current audio to maintain state
+                                       pdf_visible,  # Return PDF visibility state
+                                       current_pdf)  # Return current PDF path
                             else:
                                 yield (messages, 
                                        gr.Audio(value=latest_audio_path, visible=bool(latest_audio_path)), 
                                        gr.Row(visible=bool(latest_audio_path)),
                                        gr.Files(value=session_files, visible=True),
-                                       gr.Group(visible=False),
-                                       gr.File(visible=False),
+                                       gr.Group(visible=pdf_visible),  # Maintain PDF viewer visibility
+                                       gr.File(value=current_pdf, visible=bool(current_pdf)),
                                        gr.Row(visible=True),  # Keep processing indicator visible
                                        gr.Button(visible=False),  # Hide submit button
                                        gr.Button(visible=True),   # Show interrupt button
                                        session_files,  # Return session files to maintain state
-                                       latest_audio_path)  # Return current audio to maintain state
+                                       latest_audio_path,  # Return current audio to maintain state
+                                       pdf_visible,  # Return PDF visibility state
+                                       current_pdf)  # Return current PDF path
                             
                     elif isinstance(msg, str):
                         msg = msg.replace("<", r"\<").replace(">", r"\>")
@@ -1192,13 +1215,15 @@ class WeaveMuseInterface(gr.Blocks):
                                gr.Audio(value=latest_audio_path, visible=bool(latest_audio_path)), 
                                gr.Row(visible=bool(latest_audio_path)),
                                gr.Files(value=session_files, visible=True),
-                               gr.Group(visible=False),
-                               gr.File(visible=False),
+                               gr.Group(visible=pdf_visible),  # Maintain PDF viewer visibility
+                               gr.File(value=current_pdf, visible=bool(current_pdf)),
                                gr.Row(visible=True),  # Keep processing indicator visible
                                gr.Button(visible=False),  # Hide submit button
                                gr.Button(visible=True),   # Show interrupt button
                                session_files,  # Return session files to maintain state
-                               latest_audio_path)  # Return current audio to maintain state
+                               latest_audio_path,  # Return current audio to maintain state
+                               pdf_visible,  # Return PDF visibility state
+                               current_pdf)  # Return current PDF path
 
                 # Final check for any generated audio files (including stable_audio)
                 if not notagen_audio_found:
@@ -1244,31 +1269,36 @@ class WeaveMuseInterface(gr.Blocks):
                        gr.Audio(value=latest_audio_path, visible=bool(latest_audio_path)), 
                        gr.Row(visible=bool(latest_audio_path)), 
                        gr.Files(value=session_files, visible=True), 
-                       gr.Group(visible=False), 
-                       gr.File(visible=False), 
+                       gr.Group(visible=pdf_visible),  # Maintain PDF viewer visibility
+                       gr.File(value=current_pdf, visible=bool(current_pdf)), 
                        gr.Row(visible=False),   # Hide processing indicator
-                       gr.Button(visible=True),  # Show submit button
-                       gr.Button(visible=False),  # Hide interrupt button
+                       gr.Button(visible=True, interactive=True),  # Show submit button
+                       gr.Button(visible=False, interactive=False),  # Hide interrupt button
+                       gr.Button(visible=False, variant="secondary"),  # Hide interrupt button
                        session_files,  # Return session files to maintain state
-                       latest_audio_path)  # Return current audio to maintain state
+                       latest_audio_path,  # Return current audio to maintain state
+                       pdf_visible,  # Return PDF visibility state
+                       current_pdf)  # Return current PDF path
                 
             except Exception as e:
                 yield (messages, 
                        gr.Audio(value=latest_audio_path, visible=bool(latest_audio_path)), 
                        gr.Row(visible=bool(latest_audio_path)), 
                        gr.Files(value=session_files, visible=True), 
-                       gr.Group(visible=False), 
-                       gr.File(visible=False), 
+                       gr.Group(visible=pdf_visible),  # Maintain PDF viewer visibility
+                       gr.File(value=current_pdf, visible=bool(current_pdf)), 
                        gr.Row(visible=False),   # Hide processing indicator
-                       gr.Button(visible=True),  # Show submit button
-                       gr.Button(visible=False),  # Hide interrupt button
+                       gr.Button(visible=True, interactive=True, variant="primary", size="lg"),  # Show submit button
+                       gr.Button(visible=False, variant="secondary", size="lg"),  # Hide interrupt button
                        session_files,  # Return session files to maintain state
-                       latest_audio_path)  # Return current audio to maintain state
+                       latest_audio_path,  # Return current audio to maintain state
+                       pdf_visible,  # Return PDF visibility state
+                       current_pdf)  # Return current PDF path
                 raise gr.Error(f"Error in interaction: {str(e)}")
 
         # Clear functions - updated to handle new states
         def clear_chat():
-            return [], gr.Audio(visible=False), gr.Row(visible=False), gr.Files(value=[], visible=True), gr.Group(visible=False), gr.File(visible=False), gr.Row(visible=False), gr.Button(visible=True), gr.Button(visible=False), [], None
+            return [], gr.Audio(visible=False), gr.Row(visible=False), gr.Files(value=[], visible=True), gr.Group(visible=False), gr.File(visible=False), gr.Row(visible=False), gr.Button(visible=True, interactive=True), gr.Button(visible=False), [], None, False, None
         
         def clear_audio_files():
             return [], "No audio files uploaded", gr.Textbox(visible=False)
@@ -1301,12 +1331,12 @@ class WeaveMuseInterface(gr.Blocks):
             if "interrupt_flag" in session_state:
                 session_state["interrupt_flag"]["interrupted"] = True
             return (
-                gr.Button(visible=True),   # Show submit button
-                gr.Button(visible=False)   # Hide interrupt button
+                gr.Button(visible=True, interactive=True),   # Show submit button
+                gr.Button(visible=False, interactive=False)   # Hide interrupt button
             )
         
         # Submit handlers
-        def start_interaction(text, audio_files, session_state, session_files, current_audio, interrupt_flag):
+        def start_interaction(text, audio_files, session_state, session_files, current_audio, pdf_visible, current_pdf, interrupt_flag):
             # Reset interrupt flag
             interrupt_flag["interrupted"] = False
             # Store the interrupt flag in session state for the interaction function
@@ -1316,25 +1346,25 @@ class WeaveMuseInterface(gr.Blocks):
         # Submit event for text input
         submit_event = text_input.submit(
             start_interaction,
-            inputs=[text_input, uploaded_audio_files, session_state, session_generated_files, current_audio_path, interrupt_flag],
+            inputs=[text_input, uploaded_audio_files, session_state, session_generated_files, current_audio_path, pdf_viewer_visible, current_pdf_path, interrupt_flag],
             outputs=[stored_messages, text_input, submit_btn],
         )
         submit_event.then(
             interact_with_agent_enhanced,
-            inputs=[stored_messages, chatbot, session_state, uploaded_audio_files, session_generated_files, current_audio_path, interrupt_flag],
-            outputs=[chatbot, audio_output, audio_actions, download_files, pdf_viewer_group, pdf_viewer, progress_row, submit_btn, interrupt_btn, session_generated_files, current_audio_path]
+            inputs=[stored_messages, chatbot, session_state, uploaded_audio_files, session_generated_files, current_audio_path, pdf_viewer_visible, current_pdf_path, interrupt_flag],
+            outputs=[chatbot, audio_output, audio_actions, download_files, pdf_viewer_group, pdf_viewer, progress_row, submit_btn, interrupt_btn, session_generated_files, current_audio_path, pdf_viewer_visible, current_pdf_path]
         )
 
         # Submit button click event
         click_event = submit_btn.click(
             start_interaction,
-            inputs=[text_input, uploaded_audio_files, session_state, session_generated_files, current_audio_path, interrupt_flag],
+            inputs=[text_input, uploaded_audio_files, session_state, session_generated_files, current_audio_path, pdf_viewer_visible, current_pdf_path, interrupt_flag],
             outputs=[stored_messages, text_input, submit_btn],
         )
         click_event.then(
             interact_with_agent_enhanced,
-            inputs=[stored_messages, chatbot, session_state, uploaded_audio_files, session_generated_files, current_audio_path, interrupt_flag],
-            outputs=[chatbot, audio_output, audio_actions, download_files, pdf_viewer_group, pdf_viewer, progress_row, submit_btn, interrupt_btn, session_generated_files, current_audio_path]
+            inputs=[stored_messages, chatbot, session_state, uploaded_audio_files, session_generated_files, current_audio_path, pdf_viewer_visible, current_pdf_path, interrupt_flag],
+            outputs=[chatbot, audio_output, audio_actions, download_files, pdf_viewer_group, pdf_viewer, progress_row, submit_btn, interrupt_btn, session_generated_files, current_audio_path, pdf_viewer_visible, current_pdf_path]
         )
         
         # Interrupt handler
@@ -1345,47 +1375,42 @@ class WeaveMuseInterface(gr.Blocks):
         )
         
         # Clear handlers - updated to handle new states
-        clear_btn.click(clear_chat, outputs=[chatbot, audio_output, audio_actions, download_files, pdf_viewer_group, pdf_viewer, progress_row, submit_btn, interrupt_btn, session_generated_files, current_audio_path])
+        clear_btn.click(clear_chat, outputs=[chatbot, audio_output, audio_actions, download_files, pdf_viewer_group, pdf_viewer, progress_row, submit_btn, interrupt_btn, session_generated_files, current_audio_path, pdf_viewer_visible, current_pdf_path])
         clear_audio_btn.click(clear_audio_files, outputs=[uploaded_audio_files, audio_list, audio_info])
         
         # PDF viewer handlers - improved functionality
-        def open_pdf_in_new_tab(pdf_files):
+        def open_pdf_in_new_tab(current_pdf_path):
             """Open PDF in new tab using JavaScript"""
-            if pdf_files and len(pdf_files) > 0:
-                # Find the first PDF file
-                pdf_file = None
-                for file in pdf_files:
-                    if isinstance(file, str) and file.endswith('.pdf'):
-                        pdf_file = file
-                        break
-                
-                if pdf_file:
-                    # Return JavaScript to open PDF in new tab
-                    return f"""
-                    <script>
-                    window.open('/file={pdf_file}', '_blank');
-                    </script>
-                    <p>Opening PDF in new tab...</p>
-                    """
-                else:
-                    return "No PDF file found to open."
+            if current_pdf_path and os.path.exists(current_pdf_path):
+                # Return JavaScript to open PDF in new tab
+                return f"""
+                <script>
+                window.open('/file={current_pdf_path}', '_blank');
+                </script>
+                <p>Opening PDF in new tab...</p>
+                """
             else:
-                return "No files available to open."
+                return "No PDF file available to open."
         
-        def download_pdf_info():
-            """Provide download instructions"""
-            return "📥 Click on any file in the 'Download Generated Files' section above to download it."
+        def download_current_pdf(current_pdf_path):
+            """Provide download functionality for current PDF"""
+            if current_pdf_path and os.path.exists(current_pdf_path):
+                # Return the PDF file for download
+                return gr.File(value=current_pdf_path, visible=True, label="Download PDF")
+            else:
+                return gr.File(visible=False)
         
         # Update button handlers with improved functionality
         open_pdf_btn.click(
             open_pdf_in_new_tab,
-            inputs=[download_files],
+            inputs=[current_pdf_path],
             outputs=[progress_bar]
         )
         
         download_pdf_btn.click(
-            download_pdf_info,
-            outputs=[progress_bar]
+            download_current_pdf,
+            inputs=[current_pdf_path],
+            outputs=[download_files]  # Add to the download files area
         )
         
         # Quick action handlers (commented out since buttons are commented out)
@@ -1395,9 +1420,32 @@ class WeaveMuseInterface(gr.Blocks):
         # quick_generate_btn.click(set_generate_prompt, outputs=text_input)
         
         # Audio action handlers
+        def analyze_generated_audio(current_audio_path):
+            """Analyze the currently generated audio if available"""
+            if current_audio_path and os.path.exists(current_audio_path):
+                return f"Analyze the audio that was just generated at: {current_audio_path}. What are its musical characteristics, genre, tempo, key, and overall structure?"
+            else:
+                return ""  # Return empty string if no audio available
+        
+        def download_generated_audio(current_audio_path):
+            """Provide download functionality for generated audio"""
+            if current_audio_path and os.path.exists(current_audio_path):
+                # Return a file download component
+                return gr.File(value=current_audio_path, visible=True, label="Download Generated Audio")
+            else:
+                # Return empty file component if no audio available
+                return gr.File(visible=False)
+        
         analyze_generated_btn.click(
-            lambda: "Analyze the audio that was just generated. What are its musical characteristics?",
-            outputs=text_input
+            analyze_generated_audio,
+            inputs=[current_audio_path],
+            outputs=[text_input]
+        )
+        
+        download_audio_btn.click(
+            download_generated_audio,
+            inputs=[current_audio_path],
+            outputs=[download_files]  # Add to the download files area
         )
         
         # PDF navigation functions

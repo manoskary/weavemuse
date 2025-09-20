@@ -57,7 +57,7 @@ def create_audio_analysis_agent(model, device_map="auto", remote_only=False):
             "without checking if the file exists first. The tool will handle file validation internally."
             "Use first the Audio Flamingo tool, and if it fails, fall back to the Audio Analysis tool."
         ),
-        additional_authorized_imports=["gradio_client", "os", "pathlib", "tempfile", "shutil"],
+        additional_authorized_imports=["gradio_client", "os", "pathlib", "tempfile", "shutil", "posixpath"],
         max_steps=2
     )
     return audio_analysis_agent
@@ -70,7 +70,7 @@ def create_audio_generation_agent(model, device_map="auto", output_dir="/tmp/sta
         tools=[stable_audio_tool],
         model=model,
         name="audio_generation_agent",
-        description="Generates audio from text descriptions. Use the 'prompt' argument to specify what you want to hear."
+        description="Generates audio from text descriptions. Use the 'prompt' argument to specify what you want to hear. Generates up to 47 seconds of high-quality audio.",
     )   
     return audio_generation_agent
 

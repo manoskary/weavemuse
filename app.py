@@ -94,15 +94,15 @@ if gr.NO_RELOAD:
     conversational_tool = ConversationalTool()
 
 
-from weavemuse.agents.agents_as_tools import get_weavemuse_agents_as_tools
+from weavemuse.agents.agents_as_tools import get_weavemuse_agents_and_tools
 
-weavemuse_tools = get_weavemuse_agents_as_tools(model=model, device_map=gpu_info.device_map, notagen_output_dir="/tmp/notagen_output", stable_audio_output_dir="/tmp/stable_audio")
+weavemuse_agents, weavemuse_tools = get_weavemuse_agents_and_tools(model=model, device_map=gpu_info.device_map, notagen_output_dir="/tmp/notagen_output", stable_audio_output_dir="/tmp/stable_audio")
 
 # Main manager agent
 manager_agent = CodeAgent(
-    tools=[conversational_tool], 
+    tools=weavemuse_tools,
     model=model, 
-    managed_agents=weavemuse_tools,
+    managed_agents=weavemuse_agents,
     name="music_manager_agent",
     description=(
         "Manages music-related tasks, including web searches, advanced music analysis, "
