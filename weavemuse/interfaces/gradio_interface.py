@@ -756,8 +756,8 @@ class WeaveMuseInterface(gr.Blocks):
                     type="messages",
                     height=400,  # Reduced to make room for other components
                     avatar_images=(
-                        "https://github.com/manoskary/weavemuse/blob/main/static/avatars/user_avatar.png",
-                        "https://github.com/manoskary/weavemuse/blob/main/static/avatars/agent_avatar.png",
+                        "https://raw.githubusercontent.com/manoskary/weavemuse/refs/heads/main/static/avatars/user_avatar.png",
+                        "https://raw.githubusercontent.com/manoskary/weavemuse/refs/heads/main/static/avatars/agent_avatar.png",
                     ),
                     show_copy_button=True,
                     latex_delimiters=[
