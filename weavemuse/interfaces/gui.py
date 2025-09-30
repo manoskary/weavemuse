@@ -21,13 +21,16 @@ class WeaveMuseGUI:
         print("\n🤖 Choose your AI model:")
         print("1. Only Local Models (Requires more resources and loading time)")
         print("2. HuggingFace cloud-based agent (some local tools - faster startup)")
-        print("3. All Remote (All models and Tools are remote - no resources needed)")
+        print("3. All Remote (All models and Tools are remote through HF - no resources needed) - [AVAILABLE SOON!]")
         
         while True:
             try:
                 choice = input("\nEnter your choice (1/2/3): ").strip()
-                if choice in ['1', '2', '3']:
+                if choice in ['1', '2']:
                     return choice
+                elif choice == '3':
+                    print("❌ Option 3 is not available yet. Please choose 1 or 2.")
+                    return self.ask_model_choice()
                 else:
                     print("❌ Please enter 1, 2, or 3")
             except (KeyboardInterrupt, EOFError):
