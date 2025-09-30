@@ -30,7 +30,7 @@ def create_symbolic_music_agent(model, device_map="auto", output_dir="/tmp/notag
         tools=[notagen_tool],
         model=model,
         name="symbolic_music_agent",
-        description="Generates/Composes symbolic music in ABC notation format with full conversion capabilities. Can create compositions based on musical periods, composers, and instrumentation. Returns a PDF, XML, MIDI, and MP3 of the score.",
+        description="Generates/Composes symbolic music in ABC notation format with full conversion capabilities. Can create compositions based on musical periods, composers, and instrumentation. Returns a PDF, XML, MIDI, and MP3 of the score. Example usage of this tool: Compose a piano piece in the style of Chopin.",
         max_steps=1
     )  
     return symbolic_music_agent

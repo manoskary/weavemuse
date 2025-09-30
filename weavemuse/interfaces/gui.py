@@ -51,7 +51,10 @@ class WeaveMuseGUI:
             model, gpu_info = self.setup_local_model(gpu_info=gpu_info)
         else:
             from smolagents import InferenceClientModel
-            model = InferenceClientModel()
+            model = InferenceClientModel(
+                model_id="Qwen/Qwen3-Coder-30B-A3B-Instruct", # Using Qwen3 for better coding capabilities
+                provider="nebius", # Using Nebius for better rates and reliability, feel free to change                
+                ) 
             if model_choice == '3':
                 tool_mode = "remote"
             else:

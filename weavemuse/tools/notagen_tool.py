@@ -44,7 +44,7 @@ class NotaGenTool(ManagedTransformersTool):
         "Can create compositions only accepts three parameters: musical period, composer, and instrumentation (Use Piano for better results). "
         "composers, and instrumentation. Supports conditional generation with format: "
         "'Period-Composer-Instrumentation' (e.g., 'Romantic-Chopin-Piano'). "
-        "Automatically converts to various formats including PDF for visual display."
+        "Automatically converts to various formats including PDF for visual display."        
     )
     inputs = {
         "period": {
