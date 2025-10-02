@@ -238,11 +238,26 @@ print("Parameter Number: " + str(sum(p.numel() for p in model.parameters() if p.
 
 def postprocess_inst_names(abc_text):
     
-    with open(os.path.join(os.path.dirname(__file__), 'standard_inst_names.txt'), 'r', encoding='utf-8') as f:
-        standard_instruments_list = [line.strip() for line in f if line.strip()]
+    # try to load standard instrument names and mapping from local files otherwise directly from the raw GitHub
+    try:
+        with open(os.path.join(os.path.dirname(__file__), 'standard_inst_names.txt'), 'r', encoding='utf-8') as f:
+            standard_instruments_list = [line.strip() for line in f if line.strip()]
 
-    with open(os.path.join(os.path.dirname(__file__), 'instrument_mapping.json'), 'r', encoding='utf-8') as f:
-        instrument_mapping = json.load(f)
+        with open(os.path.join(os.path.dirname(__file__), 'instrument_mapping.json'), 'r', encoding='utf-8') as f:
+            instrument_mapping = json.load(f)
+    except:
+        logger.warning("Failed to load local instrument files, fetching from GitHub...")
+        raw_gh_path = "https://raw.githubusercontent.com/manoskary/weavemuse/refs/heads/main/weavemuse/models/notagen/"        
+        url_txt = raw_gh_path + "standard_inst_names.txt"
+        response_txt = requests.get(url_txt)
+        response_txt.raise_for_status()
+        standard_instruments_list = [line.strip() for line in response_txt.text.splitlines() if line.strip()]
+
+        url_json = raw_gh_path + "instrument_mapping.json"
+        response_json = requests.get(url_json)
+        response_json.raise_for_status()
+        instrument_mapping = response_json.json()
+        
 
     abc_lines = abc_text.split('\n')
     abc_lines = list(filter(None, abc_lines))
