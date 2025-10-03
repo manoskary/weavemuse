@@ -18,7 +18,7 @@ class NotaGenModelManager:
     # Model configurations
     MODELS = {
         "original": {
-            "hf_repo": "manoskary/NotaGenX",
+            "hf_repo": "manoskary/NotaGenX-Quantized",
             "filename": "weights_notagenx_p_size_16_p_length_1024_p_layers_20_h_size_1280.pth",
             "device": "auto",
             "quantized": False,
@@ -34,7 +34,7 @@ class NotaGenModelManager:
             "description": "INT8 quantized NotaGen model (75% smaller, faster inference)"
         },
         "quantized_fp16": {
-            "hf_repo": "manoskary/NotaGenX", 
+            "hf_repo": "manoskary/NotaGenX-Quantized", 
             "filename": "weights_notagenx_quantized_fp16.pth",
             "device": "auto",
             "quantized": True,

@@ -1,7 +1,7 @@
 import os
 
 # Configurations for inference
-INFERENCE_WEIGHTS_PATH = 'weights_notagenx_p_size_16_p_length_1024_p_layers_20_h_size_1280.pth'               # Path to weights for inference# Folder to save output files
+INFERENCE_WEIGHTS_PATH = '.cache/notagen-original/weights_notagenx_p_size_16_p_length_1024_p_layers_20_h_size_1280.pth'  # Path to original weights
 TOP_K = 9                                                       # Top k for sampling
 TOP_P = 0.9                                                      # Top p for sampling
 TEMPERATURE = 1.2                                                 # Temperature for sampling
@@ -13,6 +13,7 @@ PATCH_LENGTH = 1024                                             # Patch Length
 CHAR_NUM_LAYERS = 6                                             # Number of layers in the decoder
 PATCH_NUM_LAYERS = 20                                           # Number of layers in the encoder
 HIDDEN_SIZE = 1280                                               # Hidden Size
+
 # Quantization settings
-USE_QUANTIZATION = True
-QUANTIZED_WEIGHTS_PATH = '.cache/weights_notagenx_quantized_int8.pth'
+USE_QUANTIZATION = True                                         # Enable quantization by default
+QUANTIZED_WEIGHTS_PATH = '.cache/notagen-quantized/pytorch_model.bin'  # Path to quantized weights

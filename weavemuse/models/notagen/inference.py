@@ -85,16 +85,19 @@ def should_use_quantization():
     
     logger.info(f"System RAM: {system_ram:.1f}GB, GPU RAM: {gpu_ram:.1f}GB")
     
+    # Always prefer quantized model for better performance and efficiency
     # Use quantization if:
     # 1. System has less than 16GB RAM, OR
     # 2. GPU has less than 8GB VRAM, OR
     # 3. No GPU available
+    # 4. Or by default (quantized is faster and smaller)
     if system_ram < 16.0 or gpu_ram < 8.0 or not torch.cuda.is_available():
         logger.info("Using quantized model due to limited resources")
         return True
     else:
-        logger.info("Using full precision model")
-        return False
+        # Default to quantized for better performance
+        logger.info("Using quantized model (default for optimal performance)")
+        return True
 
 def load_model_weights():
     """Load model weights with intelligent quantization support."""
@@ -103,55 +106,62 @@ def load_model_weights():
     # Determine quantization strategy
     use_quantization = should_use_quantization()
     
-    # Check if quantized model should be used
+    # Try loading quantized model first (recommended)
     if use_quantization:
-        quantized_path = os.path.join(os.getcwd(), QUANTIZED_WEIGHTS_PATH)
-        
-        if os.path.exists(quantized_path):
+        # Download quantized weights if needed
+        try:
+            quantized_path = download_model_weights(repo_id="manoskary/NotaGenX-Quantized")
+            
             logger.info(f"Loading quantized model from: {quantized_path}")
             
-            try:
-                # Load quantized weights directly (they're already quantized)
-                state_dict = torch.load(quantized_path, map_location='cpu', weights_only=False)
-                model.load_state_dict(state_dict)
-                
-                # Apply additional quantization if needed
-                model = torch.quantization.quantize_dynamic(
-                    model.cpu(), 
-                    {torch.nn.Linear}, 
-                    dtype=torch.qint8
-                )
-                
-                # Ensure model is in eval mode and proper data type
-                model.eval()
-                model.float()  # Ensure Float32 for compatibility
-                
-                # Keep on CPU for quantized model compatibility
-                logger.info("✅ Quantized model loaded successfully! (Running on CPU)")
-                return True
-                
-            except Exception as e:
-                logger.warning(f"Failed to load quantized model: {e}")
-                logger.info("Falling back to original model...")
-        else:
-            logger.warning(f"Quantized weights not found at: {quantized_path}")
+            # Load the quantized state dict
+            state_dict = torch.load(quantized_path, map_location='cpu', weights_only=False)
+            
+            # The weights from HF are already quantized INT8, load them directly
+            model.load_state_dict(state_dict, strict=False)
+            
+            # Move to appropriate device
+            # Quantized model can work on both CPU and CUDA
+            if torch.cuda.is_available():
+                model = model.to(device)
+                logger.info(f"✅ Quantized model loaded successfully on {device}!")
+            else:
+                model = model.to('cpu')
+                logger.info("✅ Quantized model loaded successfully on CPU!")
+            
+            # Ensure model is in eval mode
+            model.eval()
+            
+            return True
+            
+        except Exception as e:
+            logger.warning(f"Failed to load quantized model: {e}")
             logger.info("Falling back to original model...")
+            import traceback
+            logger.debug(traceback.format_exc())
     
     # Fall back to original weights
-    logger.info(f"Loading original model from: {INFERENCE_WEIGHTS_PATH}")
-    download_model_weights()
-    
-    checkpoint = torch.load(INFERENCE_WEIGHTS_PATH, map_location=device, weights_only=False)
-    if 'model' in checkpoint:
-        state_dict = checkpoint['model']
-    else:
-        state_dict = checkpoint
+    try:
+        logger.info("Loading original full-precision model...")
+        original_path = download_model_weights(repo_id="ElectricAlexis/NotaGen")
         
-    model.load_state_dict(state_dict)
-    model = model.to(device)
-    model.eval()
-    logger.info("✅ Original model loaded successfully!")
-    return True
+        checkpoint = torch.load(original_path, map_location=device, weights_only=False)
+        if 'model' in checkpoint:
+            state_dict = checkpoint['model']
+        else:
+            state_dict = checkpoint
+            
+        model.load_state_dict(state_dict)
+        model = model.to(device)
+        model.eval()
+        logger.info("✅ Original model loaded successfully!")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to load model weights: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise
 
 
 def get_model_device_and_dtype():
@@ -180,29 +190,56 @@ def create_tensor_for_model(data, **kwargs):
     return torch.tensor(data, device=model_device, dtype=model_dtype, **kwargs)
 
 
-def download_model_weights(repo_id="manoskary/NotaGenX"):
-    weights_path = "weights_notagenx_p_size_16_p_length_1024_p_layers_20_h_size_1280.pth"
-    local_weights_path = os.path.join(os.getcwd(), weights_path)
+def download_model_weights(repo_id="manoskary/NotaGenX-Quantized"):
+    """
+    Download model weights from HuggingFace Hub.
+    
+    Args:
+        repo_id: HuggingFace repo ID (default: quantized model)
+        
+    Returns:
+        str: Path to downloaded weights file
+    """
+    # Determine filename based on repo
+    if repo_id == "manoskary/NotaGenX-Quantized":
+        weights_filename = "pytorch_model.bin"
+        cache_subdir = "notagen-quantized"
+    elif repo_id == "ElectricAlexis/NotaGen":
+        weights_filename = "weights_notagenx_p_size_16_p_length_1024_p_layers_20_h_size_1280.pth"
+        cache_subdir = "notagen-original"
+    else:
+        # Fallback for other repos
+        weights_filename = "weights_notagenx_p_size_16_p_length_1024_p_layers_20_h_size_1280.pth"
+        cache_subdir = "notagen-custom"
+    
+    # Create cache directory
+    cache_dir = os.path.join(os.getcwd(), ".cache", cache_subdir)
+    os.makedirs(cache_dir, exist_ok=True)
+    
+    local_weights_path = os.path.join(cache_dir, weights_filename)
 
     # Check if weights already exist locally
     if os.path.exists(local_weights_path):
-        logger.info(f"Model weights already exist at {local_weights_path}")
+        logger.info(f"Model weights already cached at {local_weights_path}")
         return local_weights_path
 
-    logger.info("Downloading model weights from HuggingFace Hub...")
+    logger.info(f"Downloading model weights from {repo_id}...")
     try:
-        # Download from HuggingFace
+        # Download from HuggingFace Hub
         downloaded_path = hf_hub_download(
             repo_id=repo_id,
-            filename=weights_path,
-            local_dir=os.getcwd(),
+            filename=weights_filename,
+            cache_dir=cache_dir,
+            local_dir=cache_dir,
             local_dir_use_symlinks=False
         )
-        logger.info(f"Model weights downloaded successfully to {downloaded_path}")
+        logger.info(f"✅ Model weights downloaded to {downloaded_path}")
         return downloaded_path
     except Exception as e:
-        logger.error(f"Error downloading model weights: {str(e)}")
-        raise RuntimeError(f"Failed to download model weights: {str(e)}")
+        logger.error(f"❌ Error downloading model weights: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise RuntimeError(f"Failed to download model weights from {repo_id}: {str(e)}")
 
 
 def prepare_model_for_kbit_training(model, use_gradient_checkpointing=True):
