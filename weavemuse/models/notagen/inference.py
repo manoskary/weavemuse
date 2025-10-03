@@ -180,7 +180,7 @@ def create_tensor_for_model(data, **kwargs):
     return torch.tensor(data, device=model_device, dtype=model_dtype, **kwargs)
 
 
-def download_model_weights():
+def download_model_weights(repo_id="manoskary/NotaGenX"):
     weights_path = "weights_notagenx_p_size_16_p_length_1024_p_layers_20_h_size_1280.pth"
     local_weights_path = os.path.join(os.getcwd(), weights_path)
 
@@ -193,7 +193,7 @@ def download_model_weights():
     try:
         # Download from HuggingFace
         downloaded_path = hf_hub_download(
-            repo_id="manoskary/NotaGenX",
+            repo_id=repo_id,
             filename=weights_path,
             local_dir=os.getcwd(),
             local_dir_use_symlinks=False
