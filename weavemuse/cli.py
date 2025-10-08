@@ -12,7 +12,7 @@ def run_interface() -> None:
     """Launch the Gradio interface."""
     try:
         print("Initializing WeaveMuse...")
-        print("This may take a few minutes on first run as models are loaded...")
+        print("This may take a few seconds on first run as dependencies are loaded...")
         
         from weavemuse.interfaces.gui import WeaveMuseGUI 
         demo = WeaveMuseGUI().launch_interface(share=False)   

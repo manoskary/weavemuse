@@ -26,13 +26,11 @@ class WeaveMuseGUI:
         while True:
             try:
                 choice = input("\nEnter your choice (1/2/3): ").strip()
-                if choice in ['1', '2']:
+                if choice in ['1', '2', '3']:
                     return choice
-                elif choice == '3':
-                    print("❌ Option 3 is not available yet. Please choose 1 or 2.")
-                    return self.ask_model_choice()
                 else:
                     print("❌ Please enter 1, 2, or 3")
+                    return self.ask_model_choice()
             except (KeyboardInterrupt, EOFError):
                 print("\n👋 Goodbye!")
                 sys.exit(0)
@@ -51,9 +49,11 @@ class WeaveMuseGUI:
 
         if model_choice == '1':
             tool_mode = "hybrid"  # Some tools local, some remote
+            print("⚡ Setting up local model..., please wait... This may take a while on first run...")
             model, gpu_info = self.setup_local_model(gpu_info=gpu_info)
         else:
             from smolagents import InferenceClientModel
+
             model = InferenceClientModel(
                 model_id="Qwen/Qwen3-Coder-30B-A3B-Instruct", # Using Qwen3 for better coding capabilities
                 provider="nebius", # Using Nebius for better rates and reliability, feel free to change                
@@ -64,7 +64,11 @@ class WeaveMuseGUI:
                 tool_mode = "hybrid"  # Some tools local, some remote
 
         print("⚡ Setting up WeaveMuse agents and tools...")         
-        weavemuse_agents, weavemuse_tools = get_weavemuse_agents_and_tools(model=model, device_map=gpu_info.device_map, notagen_output_dir="/tmp/notagen_output", stable_audio_output_dir="/tmp/stable_audio")
+        weavemuse_agents, weavemuse_tools = get_weavemuse_agents_and_tools(
+            model=model, device_map=gpu_info.device_map, 
+            notagen_output_dir="/tmp/notagen_output", stable_audio_output_dir="/tmp/stable_audio",
+            tool_mode=tool_mode
+        )
 
         # Main manager agent
         manager_agent = CodeAgent(

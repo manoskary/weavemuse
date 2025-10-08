@@ -3,9 +3,9 @@ from smolagents import (
         CodeAgent,
         WebSearchTool,         
     )
-from weavemuse.tools.stable_audio_tool import StableAudioTool
+from weavemuse.tools.stable_audio_tool import StableAudioTool, RemoteStableAudioTool
 from weavemuse.tools.audio_analysis_tool import AudioAnalysisTool
-from weavemuse.tools.notagen_tool import NotaGenTool
+from weavemuse.tools.notagen_tool import NotaGenTool, RemoteNotaGenTool
 from weavemuse.tools.chat_musician_tool import ChatMusicianTool
 from weavemuse.tools.audio_flamingo_tool import AudioFlamingoTool
 import warnings
@@ -22,9 +22,12 @@ def create_web_agent(model):
     return web_agent
 
 
-def create_symbolic_music_agent(model, device_map="auto", output_dir="/tmp/notagen_output"):
+def create_symbolic_music_agent(model, device_map="auto", output_dir="/tmp/notagen_output", remote_only=False):
     # Create NotaGen tool for symbolic music generation
-    notagen_tool = NotaGenTool(device=device_map, output_dir=output_dir)
+    if remote_only:
+        notagen_tool = RemoteNotaGenTool()
+    else:
+        notagen_tool = NotaGenTool(device=device_map, output_dir=output_dir)
 
     symbolic_music_agent = CodeAgent(
         tools=[notagen_tool],
@@ -34,6 +37,7 @@ def create_symbolic_music_agent(model, device_map="auto", output_dir="/tmp/notag
         max_steps=1
     )  
     return symbolic_music_agent
+
 
 def create_audio_analysis_agent(model, device_map="auto", remote_only=False):
     # Create Audio Flamingo tool for advanced audio analysis via Gradio Client
@@ -63,9 +67,12 @@ def create_audio_analysis_agent(model, device_map="auto", remote_only=False):
     return audio_analysis_agent
 
 
-def create_audio_generation_agent(model, device_map="auto", output_dir="/tmp/stable_audio"):
+def create_audio_generation_agent(model, device_map="auto", output_dir="/tmp/stable_audio", remote_only=False):
     # Create Audio Generation and Analysis agent (temporarily disabled to focus on NotaGen and ChatMusician)
-    stable_audio_tool = StableAudioTool(device=device_map, output_dir=output_dir)
+    if remote_only:
+        stable_audio_tool = RemoteStableAudioTool()
+    else:
+        stable_audio_tool = StableAudioTool(device=device_map, output_dir=output_dir)
     audio_generation_agent = CodeAgent(
         tools=[stable_audio_tool],
         model=model,
@@ -90,23 +97,20 @@ def get_weavemuse_agents_and_tools(model=None, device_map="auto", notagen_output
     if model is None:
         # Load the default InferenceClient model, but produce warning if not specified
         warnings.warn("No model specified, using default InferenceClientModel.")
-        model = InferenceClientModel()
-        
-    chat_musician_tool = ChatMusicianTool(device=device_map)    
-    symbolic_music_agent = create_symbolic_music_agent(model, device_map=device_map, output_dir=notagen_output_dir)
-    audio_analysis_agent = create_audio_analysis_agent(model, device_map=device_map, remote_only=(tool_mode=="remote"))
-    audio_generation_agent = create_audio_generation_agent(model, device_map=device_map, output_dir=stable_audio_output_dir)
+        model = InferenceClientModel(
+            model_id="Qwen/Qwen3-Coder-30B-A3B-Instruct",
+            provider="nebius"
+        )
+    remote_only = (tool_mode == "remote")       
+    chat_musician_tool = ChatMusicianTool(device=device_map)
+    symbolic_music_agent = create_symbolic_music_agent(model, device_map=device_map, output_dir=notagen_output_dir, remote_only=remote_only)
+    audio_analysis_agent = create_audio_analysis_agent(model, device_map=device_map, remote_only=remote_only)
+    audio_generation_agent = create_audio_generation_agent(model, device_map=device_map, output_dir=stable_audio_output_dir, remote_only=remote_only)
     web_agent = create_web_agent(model)
-    if tool_mode == "remote":
-        # In remote mode, only use the chat musician tool and web agent
-        return [
-            create_audio_analysis_agent(model, device_map=device_map),
-            web_agent
-        ], []
-    else:
-        return [            
-            symbolic_music_agent,
-            audio_analysis_agent,
-            audio_generation_agent,
-            web_agent
-        ], [chat_musician_tool]
+    tools = [] if remote_only else [chat_musician_tool]
+    return [            
+        symbolic_music_agent,
+        audio_analysis_agent,
+        audio_generation_agent,
+        web_agent
+    ], tools

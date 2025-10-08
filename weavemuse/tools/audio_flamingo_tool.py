@@ -70,7 +70,7 @@ class AudioFlamingoTool(Tool):
         if not self._initialized:
             try:
                 logger.info("Connecting to NVIDIA Audio Flamingo model...")
-                self.client = Client("nvidia/audio-flamingo-3")
+                self.client = Client("manoskary/audio-flamingo-3")
                 self._initialized = True
                 logger.info("✅ Audio Flamingo client initialized successfully")
             except Exception as e:
