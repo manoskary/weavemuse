@@ -2,7 +2,7 @@
 NotaGen Tool - Symbolic music generation using NotaGen model for ABC notation.
 """
 import logging
-from multiprocessing.dummy.connection import Client
+from gradio_client import Client
 import tempfile
 import os
 import datetime
@@ -221,7 +221,10 @@ class RemoteNotaGenTool(Tool):
         """        
         from gradio_client import Client
 
-        client = Client("manoskary/NotaGen-Inference")
+        client = Client(
+            "manoskary/NotaGen-Inference",
+            hf_token=os.getenv("HF_TOKEN")
+        )
         abc_content = client.predict(
             period=period,
             composer=composer,

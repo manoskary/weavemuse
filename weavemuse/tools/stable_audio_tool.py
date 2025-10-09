@@ -11,6 +11,7 @@ from pathlib import Path
 from smolagents.tools import Tool  # type: ignore
 import torch
 import soundfile as sf
+import torchaudio
 
 
 try:    
@@ -100,25 +101,28 @@ class RemoteStableAudioTool(Tool):
             steps = 100 if steps is None else int(steps)
             cfg_scale = 7.0 if cfg_scale is None else float(cfg_scale)
 
-            client = Client(self.space_id)
-            result = client.predict(
+            client = Client(
+                self.space_id,
+                hf_token=os.getenv("HF_TOKEN")
+            )
+            tmp_audio_path = client.predict(
                 prompt=prompt,
                 seconds_total=duration,
                 steps=steps,
                 cfg_scale=cfg_scale,
-                api_name="/predict"
+                api_name="/generate"
             )
-                        
-            
+
             # Save audio to output_dir
-            self.output_dir.mkdir(parents=True, exist_ok=True)
+            os.makedirs(self.output_dir, exist_ok=True)
             # Give the audio a timestamped filename            
             timestamp = int(time.time())
             output_filename = f"stable_audio_{timestamp}.wav"
-            temp_path = self.output_dir / output_filename
-                
+            temp_path = os.path.join(self.output_dir, output_filename)            
+            print(f"Audio saved: {temp_path}")
+
             # result is a path, move it to output_dir
-            os.rename(result, temp_path)
+            os.rename(tmp_audio_path, temp_path)
 
             logger.info(f"Audio generated successfully: {temp_path}")
             return str(temp_path)

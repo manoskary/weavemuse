@@ -99,7 +99,7 @@ def get_weavemuse_agents_and_tools(model=None, device_map="auto", notagen_output
         warnings.warn("No model specified, using default InferenceClientModel.")
         model = InferenceClientModel(
             model_id="Qwen/Qwen3-Coder-30B-A3B-Instruct",
-            provider="nebius"
+            provider="nebius"            
         )
     remote_only = (tool_mode == "remote")       
     chat_musician_tool = ChatMusicianTool(device=device_map)
