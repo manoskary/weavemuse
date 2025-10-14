@@ -30,7 +30,7 @@ class WeaveMuseGUI:
                     return choice
                 else:
                     print("❌ Please enter 1, 2, or 3")
-                    return self.ask_model_choice()
+                    # Loop will continue and prompt again
             except (KeyboardInterrupt, EOFError):
                 print("\n👋 Goodbye!")
                 sys.exit(0)
