@@ -11,9 +11,6 @@ from pathlib import Path
 from smolagents.tools import Tool  # type: ignore
 import torch
 import soundfile as sf
-import torchaudio
-
-
 try:    
     from diffusers.pipelines.stable_audio.pipeline_stable_audio import StableAudioPipeline
     STABLE_AUDIO_AVAILABLE = True
