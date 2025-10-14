@@ -107,7 +107,7 @@ def load_model_weights(model_id=None):
     use_quantization = should_use_quantization()
     
     # Try loading quantized model first (recommended)
-    if use_quantization and (model_id == None or model_id=="manoskary/NotaGenX-Quantized"):
+    if use_quantization and (model_id is None or model_id=="manoskary/NotaGenX-Quantized"):
         # Download quantized weights if needed
         try:
             quantized_path = download_model_weights(repo_id="manoskary/NotaGenX-Quantized")
