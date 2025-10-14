@@ -381,7 +381,7 @@ class NotaGenTool(ManagedTransformersTool):
     def __init__(
         self, 
         device: str = "auto", 
-        model_id: str = "manoskary/NotaGenX-Quantized", 
+        model_id: str = "ElectricAlexis/NotaGen", 
         output_dir: Optional[str] = None,
         **kwargs
     ):
@@ -407,6 +407,7 @@ class NotaGenTool(ManagedTransformersTool):
             priority=4,  # Lower priority for symbolic generation
             **kwargs
         )
+        self.model_id = model_id
         
         self.output_dir = output_dir or "/tmp/notagen_output"
         os.makedirs(self.output_dir, exist_ok=True)
