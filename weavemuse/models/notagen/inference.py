@@ -99,7 +99,7 @@ def should_use_quantization():
         logger.info("Using quantized model (default for optimal performance)")
         return True
 
-def load_model_weights():
+def load_model_weights(model_id=None):
     """Load model weights with intelligent quantization support."""
     global model
     
@@ -107,7 +107,7 @@ def load_model_weights():
     use_quantization = should_use_quantization()
     
     # Try loading quantized model first (recommended)
-    if use_quantization:
+    if use_quantization or model_id == None or model_id=="manoskary/NotaGenX-Quantized":
         # Download quantized weights if needed
         try:
             quantized_path = download_model_weights(repo_id="manoskary/NotaGenX-Quantized")
@@ -588,10 +588,10 @@ def inference_patch(period, composer, instrumentation):
 
 if __name__ == '__main__':
     inference_patch('Classical', 'Beethoven, Ludwig van', 'Orchestral')
-else:
-    # Load the model weights when imported (but not when run as main)
-    try:
-        load_model_weights()
-    except Exception as e:
-        logger.warning(f"Failed to load model weights on import: {e}")
-        logger.info("Model will be loaded on first use.")
+# else:
+#     # Load the model weights when imported (but not when run as main)
+#     try:
+#         load_model_weights()
+#     except Exception as e:
+#         logger.warning(f"Failed to load model weights on import: {e}")
+#         logger.info("Model will be loaded on first use.")

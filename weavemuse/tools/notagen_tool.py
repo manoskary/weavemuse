@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, Union
 from pathlib import Path
 import torch            
 hf_hub_download = None
+load_model_weights = None
 inference_patch = None
 postprocess_inst_names = None
 abc2xml = None
@@ -427,7 +428,7 @@ class NotaGenTool(ManagedTransformersTool):
             import requests
             from huggingface_hub import hf_hub_download
             # Import the NotaGen inference and conversion functions
-            from ..models.notagen.inference import inference_patch, postprocess_inst_names
+            from ..models.notagen.inference import inference_patch, postprocess_inst_names, load_model_weights
             from ..models.notagen.convert import abc2xml, xml2, pdf2img
             NOTAGEN_AVAILABLE = True
             print("✅ NotaGen dependencies loaded successfully!")
@@ -438,7 +439,7 @@ class NotaGenTool(ManagedTransformersTool):
             raise ImportError(f"NotaGen dependencies not available: {import_error}")            
             
         logger.info(f"Loading NotaGen model: {self.model_id}")
-        
+        load_model_weights(model_id=self.model_id)
         # Load NotaGen model (implementation would depend on actual model structure)
         # This is a placeholder - would need actual NotaGen loading code
         model = {
