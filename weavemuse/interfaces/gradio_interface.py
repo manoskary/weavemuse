@@ -1274,7 +1274,6 @@ class WeaveMuseInterface(gr.Blocks):
                        gr.Row(visible=False),   # Hide processing indicator
                        gr.Button(visible=True, interactive=True),  # Show submit button
                        gr.Button(visible=False, interactive=False),  # Hide interrupt button
-                       gr.Button(visible=False, variant="secondary"),  # Hide interrupt button
                        session_files,  # Return session files to maintain state
                        latest_audio_path,  # Return current audio to maintain state
                        pdf_visible,  # Return PDF visibility state
@@ -1298,7 +1297,7 @@ class WeaveMuseInterface(gr.Blocks):
 
         # Clear functions - updated to handle new states
         def clear_chat():
-            return [], gr.Audio(visible=False), gr.Row(visible=False), gr.Files(value=[], visible=True), gr.Group(visible=False), gr.File(visible=False), gr.Row(visible=False), gr.Button(visible=True, interactive=True), gr.Button(visible=False), [], None, False, None
+            return [], gr.Audio(value=None, visible=False), gr.Row(visible=False), gr.Files(value=[], visible=True), gr.Group(visible=False), gr.File(visible=False), gr.Row(visible=False), gr.Button(visible=True, interactive=True), gr.Button(visible=False), [], None, False, None
         
         def clear_audio_files():
             return [], "No audio files uploaded", gr.Textbox(visible=False)

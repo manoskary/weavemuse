@@ -7,7 +7,7 @@ for advanced audio analysis and question answering.
 
 import logging
 from typing import Any, Dict
-
+import os
 from gradio_client import Client, handle_file
 from smolagents.tools import Tool
 
@@ -57,7 +57,10 @@ class AudioFlamingoTool(Tool):
         if not self._initialized:
             try:
                 logger.info("Connecting to NVIDIA Audio Flamingo model...")
-                self.client = Client("nvidia/audio-flamingo-3")
+                self.client = Client(
+                    "nvidia/audio-flamingo-3",
+                    hf_token=os.getenv("HF_TOKEN")
+                )
                 self._initialized = True
                 logger.info("✅ Audio Flamingo client initialized successfully")
             except Exception as e:

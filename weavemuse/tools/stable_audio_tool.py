@@ -11,8 +11,6 @@ from pathlib import Path
 from smolagents.tools import Tool  # type: ignore
 import torch
 import soundfile as sf
-
-
 try:    
     from diffusers.pipelines.stable_audio.pipeline_stable_audio import StableAudioPipeline
     STABLE_AUDIO_AVAILABLE = True
@@ -26,6 +24,109 @@ except ImportError as e:
 from .base_tools import ManagedDiffusersTool
 
 logger = logging.getLogger(__name__)
+
+
+class RemoteStableAudioTool(Tool):
+    """
+    Tool for high-quality audio generation using Stable Audio via diffusers.
+    
+    This tool can:
+    - Generate high-quality audio from text descriptions
+    - Create music in various styles and genres
+    - Produce sound effects and ambient audio
+    - Generate audio of specific lengths (up to 47 seconds)
+
+    Uses the StableAudioPipeline Space for efficient inference without GPU dependencies.
+    """
+    # Class attributes required by smolagents
+    name = "stable_audio"
+    description = (
+        "High-quality audio generation tool using Stable Audio models. "
+        "Creates music, sound effects, and ambient audio from text descriptions "
+        "with precise control over duration and style."
+        "Returns the path to the generated audio file."
+    )
+    inputs = {
+        "prompt": {
+            "type": "string",
+            "description": "Text description of the audio to generate"
+        },
+        "duration": {
+            "type": "string",
+            "description": "Duration in seconds (default: 30, max: 47)",
+            "nullable": True
+        },
+        "steps": {
+            "type": "string",
+            "description": "Number of inference steps (default: 50, recommended: 20-50)",
+            "nullable": True
+        },
+        "cfg_scale": {
+            "type": "string",
+            "description": "Guidance scale (default: 7.0, range: 1.0-15.0)",
+            "nullable": True
+        }
+    }
+    output_type = "string"
+    def __init__(
+        self,
+        output_dir: str = "/tmp/stable_audio",
+        space_id: str = "manoskary/stable-audio-open-1.0-music",
+        **kwargs
+    ):
+        self.output_dir = output_dir
+        self.space_id = space_id
+        super().__init__(**kwargs)
+
+
+    def forward(self, prompt, duration=None, steps=None, cfg_scale=None) -> str:
+        """
+        Generate audio using Stable Audio pipeline.
+        
+        Args:
+            model: Dictionary containing loaded components
+            **kwargs: Arguments passed from forward() including prompt, duration, steps, cfg_scale
+            
+        Returns:
+            Path to generated audio file
+        """
+        try:
+            from gradio_client import Client
+
+            # Extract parameters from kwargs            
+            duration = 30 if duration is None else float(duration)
+            steps = 100 if steps is None else int(steps)
+            cfg_scale = 7.0 if cfg_scale is None else float(cfg_scale)
+
+            client = Client(
+                self.space_id,
+                hf_token=os.getenv("HF_TOKEN")
+            )
+            tmp_audio_path = client.predict(
+                prompt=prompt,
+                seconds_total=duration,
+                steps=steps,
+                cfg_scale=cfg_scale,
+                api_name="/generate"
+            )
+
+            # Save audio to output_dir
+            os.makedirs(self.output_dir, exist_ok=True)
+            # Give the audio a timestamped filename            
+            timestamp = int(time.time())
+            output_filename = f"stable_audio_{timestamp}.wav"
+            temp_path = os.path.join(self.output_dir, output_filename)            
+            print(f"Audio saved: {temp_path}")
+
+            # result is a path, move it to output_dir
+            os.rename(tmp_audio_path, temp_path)
+
+            logger.info(f"Audio generated successfully: {temp_path}")
+            return str(temp_path)
+            
+        except Exception as e:
+            logger.error(f"Error generating audio: {e}")
+            return f"Error: {str(e)}"
 
 
 class StableAudioTool(ManagedDiffusersTool):
