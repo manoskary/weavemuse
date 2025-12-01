@@ -45,7 +45,8 @@ class WeaveMuseGUI:
         # Detect GPU capabilities and get optimal model configuration
         force_cpu = check_force_cpu_mode()
         gpu_info = detect_gpu_capabilities(force_cpu=force_cpu)
-        print_gpu_summary(gpu_info)
+        if model_choice != '3':            
+            print_gpu_summary(gpu_info)
 
         if model_choice == '1':
             tool_mode = "hybrid"  # Some tools local, some remote
