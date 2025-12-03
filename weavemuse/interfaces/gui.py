@@ -1,6 +1,16 @@
 import os, sys
 from typing import List
 from smolagents import Tool, CodeAgent
+from smolagents.memory import ActionStep
+from smolagents.default_tools import FinalAnswerTool
+
+
+def finalize_on_generated_paths(step, agent):
+    if isinstance(step, ActionStep) and isinstance(step.action_output, str):
+        if "notagen_output" in step.action_output or "stable_audio" in step.action_output:
+            # Force a final answer using the observed output
+            agent.python_executor.state["_print_outputs"] = ""
+            raise RuntimeError(FinalAnswerTool().forward(step.action_output))  # triggers the final_answer path
 
 
 class WeaveMuseGUI:
@@ -85,6 +95,9 @@ class WeaveMuseGUI:
                 "If user asks to generate/compose music evaluate if symbolic (NotaGen) or audio (Stable Audio) is more appropriate."
                 "Use directly the corresponding tool. "
                 "If a task is not related to music, ask the user to provide a music-related query."
+                "When you call generator tools like notagen or stable_audio (or any tool that returns file paths), "
+                "do not keep working afterward. Call final_answer(...) immediately with a short summary and the returned paths. "
+                "Do not plan further steps after final_answer."
             ),
             add_base_tools=True,
             stream_outputs=True,
