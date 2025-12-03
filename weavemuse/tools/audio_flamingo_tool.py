@@ -71,7 +71,7 @@ class AudioFlamingoTool(Tool):
             try:
                 logger.info("Connecting to NVIDIA Audio Flamingo model...")
                 self.client = Client(
-                    "manoskary/audio-flamingo-3",
+                    "manoskary/music-flamingo",
                     hf_token=os.getenv("HF_TOKEN")
                 )
                 self._initialized = True
